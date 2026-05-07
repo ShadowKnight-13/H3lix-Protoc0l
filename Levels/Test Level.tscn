@@ -6,6 +6,7 @@
 [ext_resource type="PackedScene" uid="uid://3ngjlfokelpb" path="res://interactables/checkpoint.tscn" id="5_pbvpm"]
 [ext_resource type="PackedScene" uid="uid://bpfia33vcllfh" path="res://Platforms/slippery_platform.tscn" id="6_d1skg"]
 [ext_resource type="PackedScene" uid="uid://delb6uqb8a4oj" path="res://Platforms/moving_platform.tscn" id="7_nff53"]
+[ext_resource type="PackedScene" uid="uid://cok5t5gtfnc12" path="res://Systems/receiver.tscn" id="7_w6s87"]
 [ext_resource type="PackedScene" uid="uid://dhtv0mxqg1iet" path="res://interactables/cryo_tube.tscn" id="8_hbiw0"]
 [ext_resource type="PackedScene" uid="uid://cw56j18e1ed81" path="res://interactables/checkpoint_manager.tscn" id="8_j0rrd"]
 [ext_resource type="PackedScene" uid="uid://du6qi10yob8v4" path="res://Enemies/cactusEnemy.tscn" id="9_hklbw"]
@@ -13,7 +14,9 @@
 [ext_resource type="PackedScene" uid="uid://bx0qxonk50xa5" path="res://Enemies/BirdEnemy.tscn" id="10_mnmnm"]
 [ext_resource type="PackedScene" uid="uid://drxxs2laxnkrd" path="res://interactables/door.tscn" id="11_pbvpm"]
 [ext_resource type="PackedScene" uid="uid://cr3mqow5eljje" path="res://interactables/button.tscn" id="12_d1skg"]
+[ext_resource type="PackedScene" uid="uid://mx7vlnt8slb7" path="res://interactables/lever.tscn" id="12_kcwcd"]
 [ext_resource type="PackedScene" uid="uid://dcddsq0pxyt8a" path="res://Enemies/DogEnemy.tscn" id="13_nff53"]
+[ext_resource type="PackedScene" uid="uid://dgrq8cggm37yk" path="res://Player/Player.tscn" id="16_ommv0"]
 
 [node name="Level" type="Node2D" unique_id=1001620118]
 
@@ -244,6 +247,15 @@ forward_wait_time = 3.0
 path_points = Array[Vector2]([Vector2(0, 0), Vector2(0, 400)])
 platform_size = Vector2(64, 128)
 
+[node name="MovingPlatform8" parent="." unique_id=849992030 instance=ExtResource("7_nff53")]
+position = Vector2(543, 198)
+puzzle_controlled = true
+
+[node name="Receiver" parent="MovingPlatform8" unique_id=1812169739 instance=ExtResource("7_w6s87")]
+puzzle_id = "test"
+logic_mode = 1
+parent_method = &"set_platform_active"
+
 [node name="checkpoint_manager" parent="." unique_id=1253089489 instance=ExtResource("8_j0rrd")]
 
 [node name="cryo tube" parent="." unique_id=1901358707 instance=ExtResource("8_hbiw0")]
@@ -264,11 +276,23 @@ position = Vector2(289, 570)
 [node name="BirdEnemy" parent="." unique_id=548068155 instance=ExtResource("10_mnmnm")]
 position = Vector2(1182, 2)
 
+[node name="Lever2" parent="." unique_id=1985772696 instance=ExtResource("12_kcwcd")]
+position = Vector2(629, 336)
+source_id = "test 2"
+puzzle_id = "test"
+target_paths = Array[NodePath]([NodePath("../MovingPlatform8")])
+
 [node name="Button" parent="." unique_id=350515242 instance=ExtResource("12_d1skg")]
 position = Vector2(511, 453)
+source_id = "test"
+puzzle_id = "test"
+target_paths = Array[NodePath]([NodePath("../MovingPlatform8")])
 
 [node name="Door" parent="." unique_id=1104411225 instance=ExtResource("11_pbvpm")]
 position = Vector2(463, 445)
 
 [node name="Dog" parent="." unique_id=1361111546 instance=ExtResource("13_nff53")]
 position = Vector2(1455, 563)
+
+[node name="Player" parent="." unique_id=509081286 instance=ExtResource("16_ommv0")]
+position = Vector2(560, 404)
