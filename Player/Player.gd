@@ -642,7 +642,7 @@ func can_stand_up() -> bool:
 	
 	var query = PhysicsRayQueryParameters2D.create(ray_start, ray_end)
 	query.exclude = [self]
-	query.collision_mask = 2  # World layer
+	query.collision_mask = 0xFFFFFFFF  # Detect all layers including tilesets
 	
 	var result = space_state.intersect_ray(query)
 	
