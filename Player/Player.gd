@@ -39,6 +39,7 @@ const WALL_PROBE_SIDE_INSET: float = 1.0
 const WALL_PROBE_HALF_WIDTH: float = 3.5
 const WALL_PROBE_TOP_HEIGHT: float = 8.0
 const WALL_PROBE_BOTTOM_HEIGHT: float = 8.0
+const WALL_PROBE_MIN_MIDDLE_HEIGHT: float = 2.0
 
 # === CRUSH DETECTION CONSTANTS ===
 const MIN_CRUSHING_VELOCITY: float = 1.0       # Minimum platform speed to be considered moving
@@ -294,7 +295,7 @@ func _build_wall_probe_rects(half_body_size: Vector2) -> Dictionary:
 	if full_height <= 0.0 or half_body_size.x <= 0.0:
 		return {}
 	
-	var min_middle_height := min(2.0, full_height)
+	var min_middle_height := min(WALL_PROBE_MIN_MIDDLE_HEIGHT, full_height)
 	var top_height := min(WALL_PROBE_TOP_HEIGHT, full_height)
 	var bottom_height := min(WALL_PROBE_BOTTOM_HEIGHT, full_height)
 	var desired_top_bottom := top_height + bottom_height
