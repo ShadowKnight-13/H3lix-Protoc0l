@@ -33,6 +33,7 @@ const LEDGE_GRAB_DISTANCE: float = 30.0  # Reduced - how far above player to che
 
 # === WALL PROBE CONSTANTS ===
 const WALL_PROBE_COLLISION_MASK: int = 2
+const WALL_PROBE_MAX_RESULTS: int = 8
 const WALL_PROBE_LATERAL_REACH: float = 8.0
 const WALL_PROBE_SIDE_INSET: float = 1.0
 const WALL_PROBE_HALF_SIZE: Vector2 = Vector2(3.5, 6.0)
@@ -231,12 +232,14 @@ func _is_collider_grippable_wall(collider: Object) -> bool:
 		return false
 	
 	if collider is Node:
+		# If both groups are present, slippery wins to avoid accidental stick on mixed-tag walls.
 		if collider.is_in_group("slippery_wall"):
 			return false
 		
 		if collider.is_in_group("grippable_wall"):
 			return true
 	
+	# TileMapLayer walls remain non-grippable unless explicitly tagged above.
 	if collider is TileMapLayer:
 		return false
 	
@@ -256,7 +259,7 @@ func _run_wall_probe(space_state: PhysicsDirectSpaceState2D, origin: Vector2, di
 	query.exclude = [self]
 	query.collision_mask = WALL_PROBE_COLLISION_MASK
 	
-	var hits := space_state.intersect_shape(query, 8)
+	var hits := space_state.intersect_shape(query, WALL_PROBE_MAX_RESULTS)
 	var hit_grippable := false
 	var hit_slippery := false
 	
@@ -308,6 +311,7 @@ func _get_wall_probe_data() -> Dictionary:
 	
 	var facing := sign(facing_direction)
 	if facing == 0:
+		# Fallback keeps probes aligned with the rendered facing if direction was never initialized.
 		facing = -1.0 if $Sprite2D.flip_h else 1.0
 	
 	var half_body_size := Vector2(
@@ -362,15 +366,12 @@ func _physics_process(delta):
 	if health <= 0:
 		player_death()
 		return
-	
-	# Force wall probe update in this physics frame when debug probes are visible.
-	if debug_rays_visible:
-		_get_wall_probe_data()
-	
+
 	var x_input = Input.get_axis("move_left", "move_right")
 	var jump_pressed := Input.is_action_just_pressed("jump") or Input.is_action_just_pressed("jump_controller")
 	var jump_released := Input.is_action_just_released("jump") or Input.is_action_just_released("jump_controller")
 	var dash_pressed := Input.is_action_just_pressed("dash") or Input.is_action_just_pressed("dash_controller")
+	var wall_probe_data := _get_wall_probe_data()
 	
 	if Input.is_action_just_pressed("interact") or Input.is_action_just_pressed("interact_controller"):
 		if interaction_area and interaction_area.has_method("trigger_interact"):
@@ -600,7 +601,6 @@ func _physics_process(delta):
 	
 	# Skip normal movement logic if dashing
 	if not is_dashing:
-		var wall_probe_data := _get_wall_probe_data()
 		var on_grippable_wall := wall_probe_data.has_grippable_contact
 		var can_slide_jump_on_wall := wall_probe_data.can_wall_slide_jump
 		
