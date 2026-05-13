@@ -295,8 +295,8 @@ func _build_wall_probe_rects(half_body_size: Vector2) -> Dictionary:
 	if full_height <= 0.0 or half_body_size.x <= 0.0:
 		return {}
 	
-	var required_middle_height := min(WALL_PROBE_MIN_MIDDLE_HEIGHT, full_height)
-	var available_top_bottom_height := max(0.0, full_height - required_middle_height)
+	var clamped_min_middle_height := min(WALL_PROBE_MIN_MIDDLE_HEIGHT, full_height)
+	var available_top_and_bottom_height := max(0.0, full_height - clamped_min_middle_height)
 	var desired_top_height := max(0.0, WALL_PROBE_TOP_HEIGHT)
 	var desired_bottom_height := max(0.0, WALL_PROBE_BOTTOM_HEIGHT)
 	var desired_top_bottom_height := desired_top_height + desired_bottom_height
@@ -304,7 +304,7 @@ func _build_wall_probe_rects(half_body_size: Vector2) -> Dictionary:
 	var bottom_height := 0.0
 	
 	if desired_top_bottom_height > 0.0:
-		var scale := min(1.0, available_top_bottom_height / desired_top_bottom_height)
+		var scale := min(1.0, available_top_and_bottom_height / desired_top_bottom_height)
 		top_height = desired_top_height * scale
 		bottom_height = desired_bottom_height * scale
 	
