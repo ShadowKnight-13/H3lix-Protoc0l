@@ -296,24 +296,26 @@ func _build_wall_probe_rects(half_body_size: Vector2) -> Dictionary:
 		return {}
 	
 	var min_middle_height := min(WALL_PROBE_MIN_MIDDLE_HEIGHT, full_height)
-	var top_height := min(WALL_PROBE_TOP_HEIGHT, full_height)
-	var bottom_height := min(WALL_PROBE_BOTTOM_HEIGHT, full_height)
-	var desired_top_bottom := top_height + bottom_height
 	var max_top_bottom := max(0.0, full_height - min_middle_height)
+	var desired_top_height := max(0.0, WALL_PROBE_TOP_HEIGHT)
+	var desired_bottom_height := max(0.0, WALL_PROBE_BOTTOM_HEIGHT)
+	var desired_top_bottom := desired_top_height + desired_bottom_height
+	var top_height := 0.0
+	var bottom_height := 0.0
 	
-	if desired_top_bottom > max_top_bottom and desired_top_bottom > 0.0:
-		var scale := max_top_bottom / desired_top_bottom
-		top_height *= scale
-		bottom_height *= scale
+	if desired_top_bottom > 0.0:
+		var scale := min(1.0, max_top_bottom / desired_top_bottom)
+		top_height = desired_top_height * scale
+		bottom_height = desired_bottom_height * scale
 	
 	var middle_height := max(0.0, full_height - top_height - bottom_height)
-	var probe_half_width := min(WALL_PROBE_HALF_WIDTH, half_body_size.x)
+	var probe_half_w := min(WALL_PROBE_HALF_WIDTH, half_body_size.x)
 	
 	return {
-		"half_w": probe_half_width,
-		"top_half_size": Vector2(probe_half_width, top_height * 0.5),
-		"middle_half_size": Vector2(probe_half_width, middle_height * 0.5),
-		"bottom_half_size": Vector2(probe_half_width, bottom_height * 0.5),
+		"half_w": probe_half_w,
+		"top_half_size": Vector2(probe_half_w, top_height * 0.5),
+		"middle_half_size": Vector2(probe_half_w, middle_height * 0.5),
+		"bottom_half_size": Vector2(probe_half_w, bottom_height * 0.5),
 		"top_center_y": -half_body_size.y + (top_height * 0.5),
 		"middle_center_y": -half_body_size.y + top_height + (middle_height * 0.5),
 		"bottom_center_y": half_body_size.y - (bottom_height * 0.5)
