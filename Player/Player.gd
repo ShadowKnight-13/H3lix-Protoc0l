@@ -295,21 +295,21 @@ func _build_wall_probe_rects(half_body_size: Vector2) -> Dictionary:
 	if full_height <= 0.0 or half_body_size.x <= 0.0:
 		return {}
 	
-	var clamped_min_middle_height := min(WALL_PROBE_MIN_MIDDLE_HEIGHT, full_height)
-	var available_top_and_bottom_height := max(0.0, full_height - clamped_min_middle_height)
-	var desired_top_height := max(0.0, WALL_PROBE_TOP_HEIGHT)
-	var desired_bottom_height := max(0.0, WALL_PROBE_BOTTOM_HEIGHT)
-	var desired_top_bottom_height := desired_top_height + desired_bottom_height
+	var clamped_min_middle_height = min(WALL_PROBE_MIN_MIDDLE_HEIGHT, full_height)
+	var available_top_and_bottom_height = max(0.0, full_height - clamped_min_middle_height)
+	var desired_top_height = max(0.0, WALL_PROBE_TOP_HEIGHT)
+	var desired_bottom_height = max(0.0, WALL_PROBE_BOTTOM_HEIGHT)
+	var desired_top_bottom_height = desired_top_height + desired_bottom_height
 	var top_height := 0.0
 	var bottom_height := 0.0
 	
 	if desired_top_bottom_height > 0.0:
-		var scale := min(1.0, available_top_and_bottom_height / desired_top_bottom_height)
+		var scale = min(1.0, available_top_and_bottom_height / desired_top_bottom_height)
 		top_height = desired_top_height * scale
 		bottom_height = desired_bottom_height * scale
 	
-	var middle_height := max(0.0, full_height - top_height - bottom_height)
-	var probe_half_w := min(WALL_PROBE_HALF_WIDTH, half_body_size.x)
+	var middle_height = max(0.0, full_height - top_height - bottom_height)
+	var probe_half_w = min(WALL_PROBE_HALF_WIDTH, half_body_size.x)
 	
 	return {
 		"half_w": probe_half_w,
@@ -340,7 +340,7 @@ func _get_wall_probe_data() -> Dictionary:
 		wall_probe_cache_frame = frame
 		return data
 	
-	var facing := sign(facing_direction)
+	var facing = sign(facing_direction)
 	if facing == 0:
 		# Fallback keeps probes aligned with the rendered facing if direction was never initialized.
 		facing = -1.0 if $Sprite2D.flip_h else 1.0
@@ -355,8 +355,8 @@ func _get_wall_probe_data() -> Dictionary:
 		wall_probe_cache_frame = frame
 		return data
 	
-	var side_offset_x := facing * max(0.0, half_body_size.x - probe_rects.half_w - WALL_PROBE_SIDE_INSET)
-	var shape_center := global_position + collision_node.position
+	var side_offset_x = facing * max(0.0, half_body_size.x - probe_rects.half_w - WALL_PROBE_SIDE_INSET)
+	var shape_center = global_position + collision_node.position
 	var probe_specs := {
 		"top": {"center_y": probe_rects.top_center_y, "half_size": probe_rects.top_half_size},
 		"middle": {"center_y": probe_rects.middle_center_y, "half_size": probe_rects.middle_half_size},
@@ -365,7 +365,7 @@ func _get_wall_probe_data() -> Dictionary:
 	var space_state := world_2d.direct_space_state
 	
 	for probe_name in ["top", "middle", "bottom"]:
-		var probe_origin := shape_center + Vector2(side_offset_x, probe_specs[probe_name].center_y)
+		var probe_origin = shape_center + Vector2(side_offset_x, probe_specs[probe_name].center_y)
 		var probe_result := _run_wall_probe(space_state, probe_origin, facing, probe_specs[probe_name].half_size)
 		data.probes[probe_name] = probe_result
 		data.has_contact = data.has_contact or probe_result.hit
@@ -633,8 +633,8 @@ func _physics_process(delta):
 	
 	# Skip normal movement logic if dashing
 	if not is_dashing:
-		var on_grippable_wall := wall_probe_data.has_grippable_contact
-		var can_slide_jump_on_wall := wall_probe_data.can_wall_slide_jump
+		var on_grippable_wall = wall_probe_data.has_grippable_contact
+		var can_slide_jump_on_wall = wall_probe_data.can_wall_slide_jump
 		
 		# Determine which wall we're on
 		var wall_normal = get_wall_normal()
