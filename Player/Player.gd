@@ -31,6 +31,15 @@ const STEP_UP_CHECK_DISTANCE: float = 10.0
 # === LEDGE GRAB CONSTANTS ===
 const LEDGE_GRAB_DISTANCE: float = 30.0  # Reduced - how far above player to check for ledge
 
+# === WALL PROBE CONSTANTS ===
+const WALL_PROBE_COLLISION_MASK: int = 2
+const WALL_PROBE_LATERAL_REACH: float = 8.0
+const WALL_PROBE_SIDE_INSET: float = 1.0
+const WALL_PROBE_HALF_SIZE: Vector2 = Vector2(3.5, 6.0)
+const WALL_PROBE_TOP_OFFSET_Y: float = -12.0
+const WALL_PROBE_MIDDLE_OFFSET_Y: float = 0.0
+const WALL_PROBE_BOTTOM_OFFSET_Y: float = 12.0
+
 # === CRUSH DETECTION CONSTANTS ===
 const MIN_CRUSHING_VELOCITY: float = 1.0       # Minimum platform speed to be considered moving
 const MIN_UPWARD_CRUSH_VELOCITY: float = -1.0  # Platform y-velocity must be below this to crush upward
@@ -74,6 +83,8 @@ var is_crouching := false
 
 var debug_rays = []
 var debug_rays_visible := false
+var wall_probe_cache: Dictionary = {}
+var wall_probe_cache_frame: int = -1
 
 signal health_changed
 
@@ -202,29 +213,143 @@ func _handle_horizontal_flip(x_input: float) -> void:
 		$Hit.position.x = 30
 		$Hit.flip_h = false
 
-func is_on_grippable_wall() -> bool:
-	if not is_on_wall():
+func _empty_wall_probe_data() -> Dictionary:
+	return {
+		"has_contact": false,
+		"has_grippable_contact": false,
+		"has_slippery_contact": false,
+		"can_wall_slide_jump": false,
+		"probes": {
+			"top": {"hit": false, "hit_grippable": false, "hit_slippery": false},
+			"middle": {"hit": false, "hit_grippable": false, "hit_slippery": false},
+			"bottom": {"hit": false, "hit_grippable": false, "hit_slippery": false}
+		}
+	}
+
+func _is_collider_grippable_wall(collider: Object) -> bool:
+	if collider == null:
 		return false
 	
-	for i in range(get_slide_collision_count()):
-		var collision := get_slide_collision(i)
-		var collider := collision.get_collider()
+	if collider is Node:
+		if collider.is_in_group("slippery_wall"):
+			return false
 		
-		# Handle TileMapLayer using groups
-		if collider is TileMapLayer:
-			if collider.is_in_group("grippable_wall"):
-				return true
-			# Slippery or ungrouped - not grippable
-			continue
-				
-		# Handle physics bodies (moving platforms, etc.)
-		elif "collision_layer" in collider:
-			# Check if on layer 2 (World - Platforming)
-			if collider.collision_layer & (1 << 1):
-				return true
+		if collider.is_in_group("grippable_wall"):
+			return true
 	
-	# No grippable walls found
+	if collider is TileMapLayer:
+		return false
+	
+	if "collision_layer" in collider:
+		return (collider.collision_layer & (1 << 1)) != 0
+	
 	return false
+
+func _run_wall_probe(space_state: PhysicsDirectSpaceState2D, origin: Vector2, direction: float, probe_half_size: Vector2) -> Dictionary:
+	var probe_shape := RectangleShape2D.new()
+	probe_shape.size = probe_half_size * 2.0
+	
+	var query := PhysicsShapeQueryParameters2D.new()
+	query.shape = probe_shape
+	query.transform = Transform2D(0.0, origin)
+	query.motion = Vector2(direction * WALL_PROBE_LATERAL_REACH, 0.0)
+	query.exclude = [self]
+	query.collision_mask = WALL_PROBE_COLLISION_MASK
+	
+	var hits := space_state.intersect_shape(query, 8)
+	var hit_grippable := false
+	var hit_slippery := false
+	
+	for hit in hits:
+		var collider: Object = hit.get("collider", null)
+		if _is_collider_grippable_wall(collider):
+			hit_grippable = true
+		else:
+			hit_slippery = true
+	
+	var hit_any := not hits.is_empty()
+	var cast_end := origin + Vector2(direction * WALL_PROBE_LATERAL_REACH, 0.0)
+	var debug_color := Color.CYAN
+	
+	if hit_grippable:
+		debug_color = Color(0.1, 0.95, 0.1, 0.95)
+	elif hit_slippery:
+		debug_color = Color(1.0, 0.45, 0.15, 0.95)
+	
+	if debug_rays_visible:
+		debug_rays.append({"type": "line", "start": origin, "end": cast_end, "color": debug_color})
+		debug_rays.append({"type": "rect", "center": origin, "size": probe_shape.size, "color": Color(debug_color.r, debug_color.g, debug_color.b, 0.6)})
+		debug_rays.append({"type": "rect", "center": cast_end, "size": probe_shape.size, "color": Color(debug_color.r, debug_color.g, debug_color.b, 0.35)})
+	
+	return {
+		"hit": hit_any,
+		"hit_grippable": hit_grippable,
+		"hit_slippery": hit_slippery
+	}
+
+func _get_wall_probe_data() -> Dictionary:
+	var frame := Engine.get_physics_frames()
+	if wall_probe_cache_frame == frame:
+		return wall_probe_cache
+	
+	var data := _empty_wall_probe_data()
+	var world_2d := get_world_2d()
+	if world_2d == null:
+		wall_probe_cache = data
+		wall_probe_cache_frame = frame
+		return data
+	
+	var collision_node := $CollisionShape2D
+	var collision_shape := collision_node.shape as RectangleShape2D
+	if collision_shape == null:
+		wall_probe_cache = data
+		wall_probe_cache_frame = frame
+		return data
+	
+	var facing := sign(facing_direction)
+	if facing == 0:
+		facing = -1.0 if $Sprite2D.flip_h else 1.0
+	
+	var half_body_size := Vector2(
+		collision_shape.size.x * abs(collision_node.scale.x) * 0.5,
+		collision_shape.size.y * abs(collision_node.scale.y) * 0.5
+	)
+	var probe_half_size := Vector2(
+		min(WALL_PROBE_HALF_SIZE.x, half_body_size.x),
+		min(WALL_PROBE_HALF_SIZE.y, half_body_size.y)
+	)
+	var max_offset_y := max(0.0, half_body_size.y - probe_half_size.y)
+	var side_offset_x := facing * max(0.0, half_body_size.x - probe_half_size.x - WALL_PROBE_SIDE_INSET)
+	var shape_center := global_position + collision_node.position
+	var probe_offsets := {
+		"top": clamp(WALL_PROBE_TOP_OFFSET_Y, -max_offset_y, max_offset_y),
+		"middle": clamp(WALL_PROBE_MIDDLE_OFFSET_Y, -max_offset_y, max_offset_y),
+		"bottom": clamp(WALL_PROBE_BOTTOM_OFFSET_Y, -max_offset_y, max_offset_y)
+	}
+	var space_state := world_2d.direct_space_state
+	
+	for probe_name in ["top", "middle", "bottom"]:
+		var probe_origin := shape_center + Vector2(side_offset_x, probe_offsets[probe_name])
+		var probe_result := _run_wall_probe(space_state, probe_origin, facing, probe_half_size)
+		data.probes[probe_name] = probe_result
+		data.has_contact = data.has_contact or probe_result.hit
+		data.has_grippable_contact = data.has_grippable_contact or probe_result.hit_grippable
+		data.has_slippery_contact = data.has_slippery_contact or probe_result.hit_slippery
+	
+	data.can_wall_slide_jump = data.probes.top.hit_grippable and data.probes.middle.hit_grippable
+	wall_probe_cache = data
+	wall_probe_cache_frame = frame
+	return data
+
+func is_on_grippable_wall() -> bool:
+	return _get_wall_probe_data().has_grippable_contact
+
+func is_on_slippery_wall() -> bool:
+	var probe_data := _get_wall_probe_data()
+	return probe_data.has_slippery_contact and not probe_data.has_grippable_contact
+
+func can_wall_slide_jump() -> bool:
+	return _get_wall_probe_data().can_wall_slide_jump
 
 func _ready() -> void:
 	$Hit.visible = false
@@ -237,6 +362,11 @@ func _physics_process(delta):
 	if health <= 0:
 		player_death()
 		return
+	
+	# Force wall probe update in this physics frame when debug probes are visible.
+	if debug_rays_visible:
+		_get_wall_probe_data()
+	
 	var x_input = Input.get_axis("move_left", "move_right")
 	var jump_pressed := Input.is_action_just_pressed("jump") or Input.is_action_just_pressed("jump_controller")
 	var jump_released := Input.is_action_just_released("jump") or Input.is_action_just_released("jump_controller")
@@ -470,11 +600,14 @@ func _physics_process(delta):
 	
 	# Skip normal movement logic if dashing
 	if not is_dashing:
+		var wall_probe_data := _get_wall_probe_data()
+		var on_grippable_wall := wall_probe_data.has_grippable_contact
+		var can_slide_jump_on_wall := wall_probe_data.can_wall_slide_jump
 		
 		# Determine which wall we're on
 		var wall_normal = get_wall_normal()
-		var on_left_wall = is_on_grippable_wall() and wall_normal.x > 0  # UPDATED
-		var on_right_wall = is_on_grippable_wall() and wall_normal.x < 0  # UPDATED
+		var on_left_wall = on_grippable_wall and wall_normal.x > 0  # UPDATED
+		var on_right_wall = on_grippable_wall and wall_normal.x < 0  # UPDATED
 		
 		# Check if pressing AWAY from wall
 		var pressing_away_from_wall = false
@@ -485,7 +618,7 @@ func _physics_process(delta):
 		
 		# Check if we JUST touched a GRIPPABLE wall (and should grab it)
 		# UPDATED: Use is_on_grippable_wall() instead of is_on_wall()
-		if is_on_grippable_wall() and not is_on_floor() and not is_stuck_to_wall and not pressing_away_from_wall:
+		if on_grippable_wall and not is_on_floor() and not is_stuck_to_wall and not pressing_away_from_wall:
 			# Only grab if moving downward (falling) or just barely upward
 			if velocity.y >= -100:  # Allow slight upward velocity
 				is_stuck_to_wall = true
@@ -494,9 +627,8 @@ func _physics_process(delta):
 		# === WALL STICK & SLIDE PHYSICS ===
 		var is_wall_sliding = false
 
-		# Apply wall stick/slide physics if stuck ON A GRIPPABLE WALL
-		# UPDATED: Use is_on_grippable_wall() instead of is_on_wall()
-		if is_stuck_to_wall and is_on_grippable_wall() and not is_on_floor():
+		# Apply wall stick/slide physics only when top+middle probes are grippable.
+		if is_stuck_to_wall and can_slide_jump_on_wall and not is_on_floor():
 			is_wall_sliding = true
 	
 			if wall_stick_time < WALL_STICK_DURATION:
@@ -524,7 +656,7 @@ func _physics_process(delta):
 		# UPDATED: Use is_on_grippable_wall() instead of is_on_wall()
 		if is_stuck_to_wall and not is_wall_sliding:
 			# Only release manually if NOT currently on wall OR pressing away OR on floor
-			if pressing_away_from_wall or not is_on_grippable_wall() or is_on_floor():
+			if pressing_away_from_wall or not can_slide_jump_on_wall or is_on_floor():
 				is_stuck_to_wall = false
 				wall_stick_time = 0.0
 
@@ -883,6 +1015,11 @@ func _draw():
 			draw_line(ray.start - global_position, ray.end - global_position, ray.color, 2.0)
 		elif ray.type == "circle":
 			draw_circle(ray.pos - global_position, 5, ray.color)
+		elif ray.type == "rect":
+			var rect_size: Vector2 = ray.size
+			var rect_center: Vector2 = ray.center - global_position
+			var rect := Rect2(rect_center - rect_size * 0.5, rect_size)
+			draw_rect(rect, ray.color, false, 1.5)
 	
 	# Clear AFTER drawing, ready for next physics frame
 	debug_rays.clear()
