@@ -36,10 +36,9 @@ const WALL_PROBE_COLLISION_MASK: int = 2
 const WALL_PROBE_MAX_RESULTS: int = 8
 const WALL_PROBE_LATERAL_REACH: float = 8.0
 const WALL_PROBE_SIDE_INSET: float = 1.0
-const WALL_PROBE_HALF_SIZE: Vector2 = Vector2(3.5, 6.0)
-const WALL_PROBE_TOP_OFFSET_Y: float = -12.0
-const WALL_PROBE_MIDDLE_OFFSET_Y: float = 0.0
-const WALL_PROBE_BOTTOM_OFFSET_Y: float = 12.0
+const WALL_PROBE_HALF_WIDTH: float = 3.5
+const WALL_PROBE_TOP_HEIGHT: float = 8.0
+const WALL_PROBE_BOTTOM_HEIGHT: float = 8.0
 
 # === CRUSH DETECTION CONSTANTS ===
 const MIN_CRUSHING_VELOCITY: float = 1.0       # Minimum platform speed to be considered moving
@@ -290,6 +289,35 @@ func _run_wall_probe(space_state: PhysicsDirectSpaceState2D, origin: Vector2, di
 		"hit_slippery": hit_slippery
 	}
 
+func _build_wall_probe_rects(half_body_size: Vector2) -> Dictionary:
+	var full_height := half_body_size.y * 2.0
+	if full_height <= 0.0 or half_body_size.x <= 0.0:
+		return {}
+	
+	var min_middle_height := min(2.0, full_height)
+	var top_height := min(WALL_PROBE_TOP_HEIGHT, full_height)
+	var bottom_height := min(WALL_PROBE_BOTTOM_HEIGHT, full_height)
+	var desired_top_bottom := top_height + bottom_height
+	var max_top_bottom := max(0.0, full_height - min_middle_height)
+	
+	if desired_top_bottom > max_top_bottom and desired_top_bottom > 0.0:
+		var scale := max_top_bottom / desired_top_bottom
+		top_height *= scale
+		bottom_height *= scale
+	
+	var middle_height := max(0.0, full_height - top_height - bottom_height)
+	var probe_half_width := min(WALL_PROBE_HALF_WIDTH, half_body_size.x)
+	
+	return {
+		"half_w": probe_half_width,
+		"top_half_size": Vector2(probe_half_width, top_height * 0.5),
+		"middle_half_size": Vector2(probe_half_width, middle_height * 0.5),
+		"bottom_half_size": Vector2(probe_half_width, bottom_height * 0.5),
+		"top_center_y": -half_body_size.y + (top_height * 0.5),
+		"middle_center_y": -half_body_size.y + top_height + (middle_height * 0.5),
+		"bottom_center_y": half_body_size.y - (bottom_height * 0.5)
+	}
+
 func _get_wall_probe_data() -> Dictionary:
 	var frame := Engine.get_physics_frames()
 	if wall_probe_cache_frame == frame:
@@ -318,23 +346,24 @@ func _get_wall_probe_data() -> Dictionary:
 		collision_shape.size.x * abs(collision_node.scale.x) * 0.5,
 		collision_shape.size.y * abs(collision_node.scale.y) * 0.5
 	)
-	var probe_half_size := Vector2(
-		min(WALL_PROBE_HALF_SIZE.x, half_body_size.x),
-		min(WALL_PROBE_HALF_SIZE.y, half_body_size.y)
-	)
-	var max_offset_y := max(0.0, half_body_size.y - probe_half_size.y)
-	var side_offset_x := facing * max(0.0, half_body_size.x - probe_half_size.x - WALL_PROBE_SIDE_INSET)
+	var probe_rects := _build_wall_probe_rects(half_body_size)
+	if probe_rects.is_empty():
+		wall_probe_cache = data
+		wall_probe_cache_frame = frame
+		return data
+	
+	var side_offset_x := facing * max(0.0, half_body_size.x - probe_rects.half_w - WALL_PROBE_SIDE_INSET)
 	var shape_center := global_position + collision_node.position
-	var probe_offsets := {
-		"top": clamp(WALL_PROBE_TOP_OFFSET_Y, -max_offset_y, max_offset_y),
-		"middle": clamp(WALL_PROBE_MIDDLE_OFFSET_Y, -max_offset_y, max_offset_y),
-		"bottom": clamp(WALL_PROBE_BOTTOM_OFFSET_Y, -max_offset_y, max_offset_y)
+	var probe_specs := {
+		"top": {"center_y": probe_rects.top_center_y, "half_size": probe_rects.top_half_size},
+		"middle": {"center_y": probe_rects.middle_center_y, "half_size": probe_rects.middle_half_size},
+		"bottom": {"center_y": probe_rects.bottom_center_y, "half_size": probe_rects.bottom_half_size}
 	}
 	var space_state := world_2d.direct_space_state
 	
 	for probe_name in ["top", "middle", "bottom"]:
-		var probe_origin := shape_center + Vector2(side_offset_x, probe_offsets[probe_name])
-		var probe_result := _run_wall_probe(space_state, probe_origin, facing, probe_half_size)
+		var probe_origin := shape_center + Vector2(side_offset_x, probe_specs[probe_name].center_y)
+		var probe_result := _run_wall_probe(space_state, probe_origin, facing, probe_specs[probe_name].half_size)
 		data.probes[probe_name] = probe_result
 		data.has_contact = data.has_contact or probe_result.hit
 		data.has_grippable_contact = data.has_grippable_contact or probe_result.hit_grippable
