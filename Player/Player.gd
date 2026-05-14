@@ -247,15 +247,21 @@ func _handle_horizontal_flip(x_input: float) -> void:
 		$Hit.position.x = 30
 		$Hit.flip_h = false
 
+func _middle_probe_segment_count() -> int:
+	return max(1, WALL_PROBE_MIDDLE_SEGMENTS)
+
+func _middle_probe_name(index: int) -> String:
+	return "middle_%d" % index
+
 func _empty_wall_probe_data() -> Dictionary:
-	var middle_segment_count: int = max(1, WALL_PROBE_MIDDLE_SEGMENTS)
+	var middle_segment_count: int = _middle_probe_segment_count()
 	var probes := {
 		"top": {"hit": false, "hit_grippable": false, "hit_slippery": false},
 		"middle": {"hit": false, "hit_grippable": false, "hit_slippery": false},
 		"bottom": {"hit": false, "hit_grippable": false, "hit_slippery": false}
 	}
 	for i in range(middle_segment_count):
-		probes["middle_%d" % (i + 1)] = {"hit": false, "hit_grippable": false, "hit_slippery": false}
+		probes[_middle_probe_name(i + 1)] = {"hit": false, "hit_grippable": false, "hit_slippery": false}
 
 	return {
 		"has_contact": false,
@@ -401,14 +407,14 @@ func _get_wall_probe_data() -> Dictionary:
 	}
 	var probe_order: Array[String] = ["top"]
 	var middle_probe_names: Array[String] = []
-	var middle_segment_count: int = max(1, WALL_PROBE_MIDDLE_SEGMENTS)
+	var middle_segment_count: int = _middle_probe_segment_count()
 	var middle_height := probe_rects.middle_half_size.y * 2.0
 	var middle_segment_height := middle_height / float(middle_segment_count)
 	var middle_segment_half_h := middle_segment_height * 0.5
 	var middle_start_y := probe_rects.middle_center_y - (middle_height * 0.5) + middle_segment_half_h
 
 	for i in range(middle_segment_count):
-		var probe_name := "middle_%d" % (i + 1)
+		var probe_name := _middle_probe_name(i + 1)
 		middle_probe_names.append(probe_name)
 		probe_order.append(probe_name)
 		probe_specs[probe_name] = {
@@ -1096,7 +1102,7 @@ func _compute_ledge_hang_from_probes() -> Dictionary:
 	var out := {"valid": false, "hang_point": Vector2.ZERO, "stand_point": Vector2.ZERO, "wall_normal": Vector2.ZERO}
 
 	var probe_data := _get_wall_probe_data()
-	var first_mid_probe_name := "middle_1"
+	var first_mid_probe_name := _middle_probe_name(1)
 	if not probe_data.probes.has(first_mid_probe_name):
 		return out
 	var first_mid_probe: Dictionary = probe_data.probes[first_mid_probe_name]
