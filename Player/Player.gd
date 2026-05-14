@@ -408,10 +408,10 @@ func _get_wall_probe_data() -> Dictionary:
 	var probe_order: Array[String] = ["top"]
 	var middle_probe_names: Array[String] = []
 	var middle_segment_count: int = _middle_probe_segment_count()
-	var middle_height := probe_rects.middle_half_size.y * 2.0
-	var middle_segment_height := middle_height / float(middle_segment_count)
-	var middle_segment_half_h := middle_segment_height * 0.5
-	var middle_start_y := probe_rects.middle_center_y - (middle_height * 0.5) + middle_segment_half_h
+	var middle_height = probe_rects.middle_half_size.y * 2.0
+	var middle_segment_height = middle_height / float(middle_segment_count)
+	var middle_segment_half_h = middle_segment_height * 0.5
+	var middle_start_y = probe_rects.middle_center_y - (middle_height * 0.5) + middle_segment_half_h
 
 	for i in range(middle_segment_count):
 		var probe_name := _middle_probe_name(i + 1)
@@ -1130,16 +1130,16 @@ func _compute_ledge_hang_from_probes() -> Dictionary:
 	if collision_shape == null:
 		return out
 
-	var half_h := collision_shape.size.y * abs(collision_node.scale.y) * 0.5
+	var half_h = collision_shape.size.y * abs(collision_node.scale.y) * 0.5
 
 	# Probe x: place ray past the wall face to detect the ledge top floor surface.
 	var edge_probe_x := global_position.x + into_wall_dir * (WALL_PROBE_LATERAL_REACH + 8.0)
 	# Start scanning just above the player's head and sweep downward.
-	var origin_y := global_position.y - half_h
+	var origin_y = global_position.y - half_h
 
 	var floor_hit := {}
 	for i in range(LEDGE_FLOOR_PROBE_ITERATIONS):
-		var y := origin_y + float(i) * LEDGE_FLOOR_PROBE_STEP
+		var y = origin_y + float(i) * LEDGE_FLOOR_PROBE_STEP
 		var start := Vector2(edge_probe_x, y - LEDGE_FLOOR_PROBE_UP)
 		var end_pos := Vector2(edge_probe_x, y + LEDGE_FLOOR_PROBE_DOWN)
 		var q := PhysicsRayQueryParameters2D.create(start, end_pos)
