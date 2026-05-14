@@ -49,6 +49,7 @@ const WALL_PROBE_HALF_WIDTH: float = 3.5
 const WALL_PROBE_TOP_HEIGHT: float = 8.0
 const WALL_PROBE_BOTTOM_HEIGHT: float = 8.0
 const WALL_PROBE_MIN_MIDDLE_HEIGHT: float = 2.0
+const WALL_PROBE_MIDDLE_SEGMENTS: int = 3
 
 # === CRUSH DETECTION CONSTANTS ===
 const MIN_CRUSHING_VELOCITY: float = 1.0       # Minimum platform speed to be considered moving
@@ -247,16 +248,20 @@ func _handle_horizontal_flip(x_input: float) -> void:
 		$Hit.flip_h = false
 
 func _empty_wall_probe_data() -> Dictionary:
+	var probes := {
+		"top": {"hit": false, "hit_grippable": false, "hit_slippery": false},
+		"middle": {"hit": false, "hit_grippable": false, "hit_slippery": false},
+		"bottom": {"hit": false, "hit_grippable": false, "hit_slippery": false}
+	}
+	for i in range(max(1, WALL_PROBE_MIDDLE_SEGMENTS)):
+		probes["middle_%d" % (i + 1)] = {"hit": false, "hit_grippable": false, "hit_slippery": false}
+
 	return {
 		"has_contact": false,
 		"has_grippable_contact": false,
 		"has_slippery_contact": false,
 		"can_wall_slide_jump": false,
-		"probes": {
-			"top": {"hit": false, "hit_grippable": false, "hit_slippery": false},
-			"middle": {"hit": false, "hit_grippable": false, "hit_slippery": false},
-			"bottom": {"hit": false, "hit_grippable": false, "hit_slippery": false}
-		}
+		"probes": probes
 	}
 
 func _is_collider_grippable_wall(collider: Object) -> bool:
@@ -391,18 +396,42 @@ func _get_wall_probe_data() -> Dictionary:
 	var shape_center = global_position + collision_node.position
 	var probe_specs := {
 		"top": {"center_y": probe_rects.top_center_y, "half_size": probe_rects.top_half_size},
-		"middle": {"center_y": probe_rects.middle_center_y, "half_size": probe_rects.middle_half_size},
 		"bottom": {"center_y": probe_rects.bottom_center_y, "half_size": probe_rects.bottom_half_size}
 	}
+	var probe_order: Array[String] = ["top"]
+	var middle_probe_names: Array[String] = []
+	var middle_segment_count: int = max(1, WALL_PROBE_MIDDLE_SEGMENTS)
+	var middle_height := probe_rects.middle_half_size.y * 2.0
+	var middle_segment_height := middle_height / float(middle_segment_count)
+	var middle_segment_half_h := middle_segment_height * 0.5
+	var middle_start_y := probe_rects.middle_center_y - (middle_height * 0.5) + middle_segment_half_h
+
+	for i in range(middle_segment_count):
+		var probe_name := "middle_%d" % (i + 1)
+		middle_probe_names.append(probe_name)
+		probe_order.append(probe_name)
+		probe_specs[probe_name] = {
+			"center_y": middle_start_y + middle_segment_height * float(i),
+			"half_size": Vector2(probe_rects.half_w, middle_segment_half_h)
+		}
+	probe_order.append("bottom")
 	var space_state := world_2d.direct_space_state
 	
-	for probe_name in ["top", "middle", "bottom"]:
+	for probe_name in probe_order:
 		var probe_origin = shape_center + Vector2(side_offset_x, probe_specs[probe_name].center_y)
 		var probe_result := _run_wall_probe(space_state, probe_origin, facing, probe_specs[probe_name].half_size)
 		data.probes[probe_name] = probe_result
 		data.has_contact = data.has_contact or probe_result.hit
 		data.has_grippable_contact = data.has_grippable_contact or probe_result.hit_grippable
 		data.has_slippery_contact = data.has_slippery_contact or probe_result.hit_slippery
+
+	var middle_combined := {"hit": false, "hit_grippable": false, "hit_slippery": false}
+	for probe_name in middle_probe_names:
+		var probe_result: Dictionary = data.probes[probe_name]
+		middle_combined.hit = middle_combined.hit or probe_result.hit
+		middle_combined.hit_grippable = middle_combined.hit_grippable or probe_result.hit_grippable
+		middle_combined.hit_slippery = middle_combined.hit_slippery or probe_result.hit_slippery
+	data.probes.middle = middle_combined
 	
 	data.can_wall_slide_jump = data.probes.top.hit_grippable and data.probes.middle.hit_grippable
 	wall_probe_cache = data
@@ -1066,10 +1095,16 @@ func _compute_ledge_hang_from_probes() -> Dictionary:
 	var out := {"valid": false, "hang_point": Vector2.ZERO, "stand_point": Vector2.ZERO, "wall_normal": Vector2.ZERO}
 
 	var probe_data := _get_wall_probe_data()
-	if not probe_data.probes.middle.hit_grippable:
+	var first_mid_probe_name := "middle_1"
+	if not probe_data.probes.has(first_mid_probe_name):
+		first_mid_probe_name = "middle"
+	var first_mid_probe: Dictionary = probe_data.probes[first_mid_probe_name]
+	if probe_data.probes.top.hit_slippery:
 		return out
 	if probe_data.probes.top.hit_grippable:
-		return out  # Top also grippable → normal wall slide territory, not a ledge hang
+		return out
+	if not first_mid_probe.hit_grippable:
+		return out
 
 	var world_2d := get_world_2d()
 	if world_2d == null:
