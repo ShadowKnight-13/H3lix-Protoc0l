@@ -248,12 +248,13 @@ func _handle_horizontal_flip(x_input: float) -> void:
 		$Hit.flip_h = false
 
 func _empty_wall_probe_data() -> Dictionary:
+	var middle_segment_count: int = max(1, WALL_PROBE_MIDDLE_SEGMENTS)
 	var probes := {
 		"top": {"hit": false, "hit_grippable": false, "hit_slippery": false},
 		"middle": {"hit": false, "hit_grippable": false, "hit_slippery": false},
 		"bottom": {"hit": false, "hit_grippable": false, "hit_slippery": false}
 	}
-	for i in range(max(1, WALL_PROBE_MIDDLE_SEGMENTS)):
+	for i in range(middle_segment_count):
 		probes["middle_%d" % (i + 1)] = {"hit": false, "hit_grippable": false, "hit_slippery": false}
 
 	return {
@@ -1097,7 +1098,7 @@ func _compute_ledge_hang_from_probes() -> Dictionary:
 	var probe_data := _get_wall_probe_data()
 	var first_mid_probe_name := "middle_1"
 	if not probe_data.probes.has(first_mid_probe_name):
-		first_mid_probe_name = "middle"
+		return out
 	var first_mid_probe: Dictionary = probe_data.probes[first_mid_probe_name]
 	if probe_data.probes.top.hit_slippery:
 		return out
