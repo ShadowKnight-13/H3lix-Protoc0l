@@ -31,6 +31,15 @@ const STEP_UP_CHECK_DISTANCE: float = 10.0
 # === LEDGE GRAB CONSTANTS ===
 const LEDGE_GRAB_DISTANCE: float = 30.0  # Reduced - how far above player to check for ledge
 
+# === LEDGE HANG CONSTANTS ===
+const LEDGE_HANG_OFFSET_Y: float = 2.0    # Vertical offset between hang and stand position
+const LEDGE_CLIMB_TWEEN_TIME: float = 0.18  # Seconds to tween onto ledge top
+const LEDGE_HANG_HORIZONTAL_NUDGE: float = 4.0   # Pixels to move onto ledge when standing
+const LEDGE_FLOOR_PROBE_ITERATIONS: int = 8      # How many vertical steps to scan for ledge top
+const LEDGE_FLOOR_PROBE_STEP: float = 4.0        # Y spacing between probe steps
+const LEDGE_FLOOR_PROBE_UP: float = 16.0         # Ray start offset above each probe step
+const LEDGE_FLOOR_PROBE_DOWN: float = 32.0       # Ray reach below each probe step
+
 # === WALL PROBE CONSTANTS ===
 const WALL_PROBE_COLLISION_MASK: int = 2
 const WALL_PROBE_MAX_RESULTS: int = 8
@@ -87,6 +96,13 @@ var debug_rays_visible := false
 var wall_probe_cache: Dictionary = {}
 var wall_probe_cache_frame: int = -1
 
+## === LEDGE HANG STATE ===
+var is_ledge_hanging := false
+var is_ledge_climbing := false
+var ledge_hang_point: Vector2 = Vector2.ZERO
+var ledge_stand_point: Vector2 = Vector2.ZERO
+var ledge_hang_wall_normal: Vector2 = Vector2.ZERO
+
 signal health_changed
 
 func player_death():
@@ -127,6 +143,11 @@ func reset_for_respawn() -> void:
 	wall_jump_lock = 0.0
 	is_stuck_to_wall = false
 	is_wall_jumping = false
+	is_ledge_hanging = false
+	is_ledge_climbing = false
+	ledge_hang_point = Vector2.ZERO
+	ledge_stand_point = Vector2.ZERO
+	ledge_hang_wall_normal = Vector2.ZERO
 
 	# Jump/dash state.
 	is_jumping = false
@@ -173,6 +194,17 @@ func update_animations(x_input: float) -> void:
 		$AnimationPlayer.play("Dash")
 		# Maintain sprite direction during dash
 		$Sprite2D.flip_h = dash_direction < 0
+		return
+
+	# Ledge climb (tween in progress)
+	if is_ledge_climbing:
+		$AnimationPlayer.play("Getup")
+		return
+
+	# Ledge hang (waiting for jump input)
+	if is_ledge_hanging:
+		$AnimationPlayer.play("Wall_slide")
+		$Sprite2D.flip_h = (ledge_hang_wall_normal.x > 0)
 		return
 
 	# 2. AIRBORNE STATES
@@ -405,6 +437,26 @@ func _physics_process(delta):
 	var dash_pressed := Input.is_action_just_pressed("dash") or Input.is_action_just_pressed("dash_controller")
 	var wall_probe_data := _get_wall_probe_data()
 	
+	# === LEDGE CLIMBING: tween owns position, freeze all input/physics ===
+	if is_ledge_climbing:
+		_update_attack_timers(delta)
+		_update_melee_hitbox_position()
+		move_and_slide()
+		was_on_floor_last_frame = is_on_floor()
+		player_death()
+		return
+
+	# === LEDGE HANGING: freeze in place, await jump input ===
+	if is_ledge_hanging:
+		_handle_ledge_hang_input(jump_pressed)
+		update_animations(x_input)
+		_update_attack_timers(delta)
+		_update_melee_hitbox_position()
+		move_and_slide()
+		was_on_floor_last_frame = is_on_floor()
+		player_death()
+		return
+	
 	if Input.is_action_just_pressed("interact") or Input.is_action_just_pressed("interact_controller"):
 		if interaction_area and interaction_area.has_method("trigger_interact"):
 			interaction_area.trigger_interact()
@@ -633,6 +685,11 @@ func _physics_process(delta):
 	
 	# Skip normal movement logic if dashing
 	if not is_dashing:
+		# === TRY ENTER LEDGE HANG ===
+		# Must run before wall-stick grab so ledge hang takes priority when eligible.
+		if not is_on_floor():
+			_try_enter_ledge_hang()
+
 		var on_grippable_wall = wall_probe_data.has_grippable_contact
 		var can_slide_jump_on_wall = wall_probe_data.can_wall_slide_jump
 		
@@ -650,7 +707,7 @@ func _physics_process(delta):
 		
 		# Check if we JUST touched a GRIPPABLE wall (and should grab it)
 		# UPDATED: Use is_on_grippable_wall() instead of is_on_wall()
-		if on_grippable_wall and not is_on_floor() and not is_stuck_to_wall and not pressing_away_from_wall:
+		if on_grippable_wall and not is_on_floor() and not is_stuck_to_wall and not pressing_away_from_wall and not is_ledge_hanging:
 			# Only grab if moving downward (falling) or just barely upward
 			if velocity.y >= -100:  # Allow slight upward velocity
 				is_stuck_to_wall = true
@@ -1000,6 +1057,161 @@ func check_for_ledge() -> Vector2:
 				return teleport_pos
 	
 	return Vector2.ZERO
+
+## === LEDGE HANG SYSTEM ===
+
+# Find the ledge hang point (current position) and stand point (top of ledge)
+# from current wall probe state. Returns a dict with valid, hang_point, stand_point, wall_normal.
+func _compute_ledge_hang_from_probes() -> Dictionary:
+	var out := {"valid": false, "hang_point": Vector2.ZERO, "stand_point": Vector2.ZERO, "wall_normal": Vector2.ZERO}
+
+	var probe_data := _get_wall_probe_data()
+	if not probe_data.probes.middle.hit_grippable:
+		return out
+	if probe_data.probes.top.hit_grippable:
+		return out  # Top also grippable → normal wall slide territory, not a ledge hang
+
+	var world_2d := get_world_2d()
+	if world_2d == null:
+		return out
+
+	var wall_normal := get_wall_normal()
+	if wall_normal == Vector2.ZERO:
+		# Derive from facing direction when CharacterBody2D hasn't registered wall contact yet.
+		wall_normal = Vector2(-facing_direction, 0.0)
+
+	var space_state := world_2d.direct_space_state
+	var into_wall_dir: float = -wall_normal.x  # +1 or -1 toward wall
+
+	var collision_node := $CollisionShape2D
+	var collision_shape := collision_node.shape as RectangleShape2D
+	if collision_shape == null:
+		return out
+
+	var half_h := collision_shape.size.y * abs(collision_node.scale.y) * 0.5
+
+	# Probe x: place ray past the wall face to detect the ledge top floor surface.
+	var edge_probe_x := global_position.x + into_wall_dir * (WALL_PROBE_LATERAL_REACH + 8.0)
+	# Start scanning just above the player's head and sweep downward.
+	var origin_y := global_position.y - half_h
+
+	var floor_hit := {}
+	for i in range(LEDGE_FLOOR_PROBE_ITERATIONS):
+		var y := origin_y + float(i) * LEDGE_FLOOR_PROBE_STEP
+		var start := Vector2(edge_probe_x, y - LEDGE_FLOOR_PROBE_UP)
+		var end_pos := Vector2(edge_probe_x, y + LEDGE_FLOOR_PROBE_DOWN)
+		var q := PhysicsRayQueryParameters2D.create(start, end_pos)
+		q.exclude = [self]
+		q.collision_mask = 2
+		floor_hit = space_state.intersect_ray(q)
+		if floor_hit:
+			break
+
+	if not floor_hit:
+		return out
+
+	# Hang point: current player position (freeze here while hanging).
+	var hang_point := global_position
+
+	# Stand point: position player so feet land on the ledge top surface,
+	# nudged slightly onto the ledge horizontally.
+	var stand_point := Vector2(
+		global_position.x + into_wall_dir * LEDGE_HANG_HORIZONTAL_NUDGE,
+		floor_hit.position.y - half_h - LEDGE_HANG_OFFSET_Y
+	)
+
+	out.valid = true
+	out.hang_point = hang_point
+	out.stand_point = stand_point
+	out.wall_normal = wall_normal
+	return out
+
+
+# Returns true if the player-shaped body can occupy 'pos' without overlapping world geometry.
+func _can_occupy_at_position(pos: Vector2) -> bool:
+	var world_2d := get_world_2d()
+	if world_2d == null:
+		return true
+	var space_state := world_2d.direct_space_state
+
+	var collision_node := $CollisionShape2D
+	var src_shape := collision_node.shape as RectangleShape2D
+	if src_shape == null:
+		return true
+
+	# Use full standing collision size regardless of current crouch scale.
+	var stand_shape := RectangleShape2D.new()
+	stand_shape.size = src_shape.size
+
+	var qp := PhysicsShapeQueryParameters2D.new()
+	qp.shape = stand_shape
+	qp.transform = Transform2D(0.0, pos + collision_node.position)
+	qp.exclude = [self]
+	qp.collision_mask = 2
+
+	var hits := space_state.intersect_shape(qp, 1)
+	return hits.is_empty()
+
+
+# Called each frame while is_ledge_hanging to maintain freeze and handle jump input.
+func _handle_ledge_hang_input(jump_pressed: bool) -> void:
+	# Release hang if player somehow lands (e.g., platform rises).
+	if is_on_floor():
+		is_ledge_hanging = false
+		return
+
+	# Freeze position and velocity every frame.
+	velocity = Vector2.ZERO
+	global_position = ledge_hang_point
+
+	if not jump_pressed:
+		return
+
+	is_ledge_hanging = false
+
+	if not _can_occupy_at_position(ledge_stand_point):
+		# No room to stand on top → wall jump away from wall.
+		velocity.y = JUMP_HEIGHT
+		velocity.x = ledge_hang_wall_normal.x * WALL_JUMP_PUSH_FORCE
+		wall_jump_lock = WALL_JUMP_LOCK_TIME
+		is_wall_jumping = true
+		is_jumping = true
+		is_dash_jumping = false
+		air_dash_used = false
+		return
+
+	# Room available: tween player onto the ledge top.
+	is_ledge_climbing = true
+	var t := create_tween()
+	t.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	t.tween_property(self, "global_position", ledge_stand_point, LEDGE_CLIMB_TWEEN_TIME)
+	t.finished.connect(func() -> void:
+		is_ledge_climbing = false
+		velocity = Vector2.ZERO
+	)
+
+
+# Evaluate whether probe conditions are right to enter ledge hang and do so if so.
+func _try_enter_ledge_hang() -> void:
+	if is_ledge_hanging or is_ledge_climbing:
+		return
+	if is_on_floor() or is_dashing:
+		return
+
+	var ledge := _compute_ledge_hang_from_probes()
+	if not ledge.valid:
+		return
+
+	is_ledge_hanging = true
+	ledge_hang_point = ledge.hang_point
+	ledge_stand_point = ledge.stand_point
+	ledge_hang_wall_normal = ledge.wall_normal
+	velocity = Vector2.ZERO
+	global_position = ledge_hang_point
+	is_stuck_to_wall = false
+	wall_stick_time = 0.0
+	skip_gravity_this_frame = true  # Suppress gravity on the entry frame.
+
 
 ## === DEBUG VISUALIZATION ===
 func _process(_delta):
