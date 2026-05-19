@@ -100,6 +100,7 @@ var wall_probe_cache_frame: int = -1
 ## === LEDGE HANG STATE ===
 var is_ledge_hanging := false
 var is_ledge_climbing := false
+var is_ledge_hang_transitioning := false
 var ledge_hang_point: Vector2 = Vector2.ZERO
 var ledge_stand_point: Vector2 = Vector2.ZERO
 var ledge_hang_wall_normal: Vector2 = Vector2.ZERO
@@ -146,6 +147,7 @@ func reset_for_respawn() -> void:
 	is_wall_jumping = false
 	is_ledge_hanging = false
 	is_ledge_climbing = false
+	is_ledge_hang_transitioning = false
 	ledge_hang_point = Vector2.ZERO
 	ledge_stand_point = Vector2.ZERO
 	ledge_hang_wall_normal = Vector2.ZERO
@@ -475,9 +477,11 @@ func _physics_process(delta):
 	
 	# === LEDGE CLIMBING: tween owns position, freeze all input/physics ===
 	if is_ledge_climbing:
+		velocity = Vector2.ZERO
 		_update_attack_timers(delta)
 		_update_melee_hitbox_position()
-		move_and_slide()
+		if not is_ledge_hang_transitioning:
+			move_and_slide()
 		was_on_floor_last_frame = is_on_floor()
 		player_death()
 		return
@@ -861,20 +865,6 @@ func _physics_process(delta):
 		position.y -= step_height
 		stepped_up = true
 	
-	# === LEDGE GRAB MECHANIC ===
-	# Check for ledge grab when in the air and touching a wall
-	# BUT NOT when wall sliding (to prevent raycasting issues)
-	# AND only on grippable walls (not slippery walls)
-	if not is_on_floor() and is_on_wall() and not is_stuck_to_wall and is_on_grippable_wall():
-		var ledge_data = check_for_ledge()
-		if ledge_data != Vector2.ZERO:
-			# Teleport to ledge position
-			global_position = ledge_data
-			velocity.y = 0  # Cancel vertical velocity
-			# Release from wall if stuck
-			is_stuck_to_wall = false
-			wall_stick_time = 0.0
-	
 	# Track floor state for next frame
 	was_on_floor_last_frame = is_on_floor()
 	
@@ -1096,6 +1086,13 @@ func check_for_ledge() -> Vector2:
 
 ## === LEDGE HANG SYSTEM ===
 
+func _get_player_half_height_world() -> float:
+	var collision_node := $CollisionShape2D
+	var collision_shape := collision_node.shape as RectangleShape2D
+	if collision_shape == null:
+		return 0.0
+	return collision_shape.size.y * abs(collision_node.scale.y) * 0.5
+
 # Find the ledge hang point (current position) and stand point (top of ledge)
 # from current wall probe state. Returns a dict with valid, hang_point, stand_point, wall_normal.
 func _compute_ledge_hang_from_probes() -> Dictionary:
@@ -1130,7 +1127,7 @@ func _compute_ledge_hang_from_probes() -> Dictionary:
 	if collision_shape == null:
 		return out
 
-	var half_h = collision_shape.size.y * abs(collision_node.scale.y) * 0.5
+	var half_h = _get_player_half_height_world()
 
 	# Probe x: place ray past the wall face to detect the ledge top floor surface.
 	var edge_probe_x := global_position.x + into_wall_dir * (WALL_PROBE_LATERAL_REACH + 8.0)
@@ -1152,8 +1149,9 @@ func _compute_ledge_hang_from_probes() -> Dictionary:
 	if not floor_hit:
 		return out
 
-	# Hang point: current player position (freeze here while hanging).
-	var hang_point := global_position
+	# Hang point: align the top of the player with the detected ledge top.
+	var ledge_top_y := floor_hit.position.y
+	var hang_point := Vector2(global_position.x, ledge_top_y + half_h)
 
 	# Stand point: position player so feet land on the ledge top surface,
 	# nudged slightly onto the ledge horizontally.
@@ -1249,10 +1247,21 @@ func _try_enter_ledge_hang() -> void:
 	ledge_stand_point = ledge.stand_point
 	ledge_hang_wall_normal = ledge.wall_normal
 	velocity = Vector2.ZERO
-	global_position = ledge_hang_point
+	is_ledge_hanging = false
+	is_ledge_climbing = true
+	is_ledge_hang_transitioning = true
 	is_stuck_to_wall = false
 	wall_stick_time = 0.0
 	skip_gravity_this_frame = true  # Suppress gravity on the entry frame.
+	var t := create_tween()
+	t.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	t.tween_property(self, "global_position", ledge_hang_point, LEDGE_CLIMB_TWEEN_TIME)
+	t.finished.connect(func() -> void:
+		velocity = Vector2.ZERO
+		is_ledge_climbing = false
+		is_ledge_hang_transitioning = false
+		is_ledge_hanging = true
+	)
 
 
 ## === DEBUG VISUALIZATION ===
