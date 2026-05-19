@@ -477,10 +477,10 @@ func _physics_process(delta):
 	
 	# === LEDGE CLIMBING: tween owns position, freeze all input/physics ===
 	if is_ledge_climbing:
-		velocity = Vector2.ZERO
 		_update_attack_timers(delta)
 		_update_melee_hitbox_position()
 		if not is_ledge_hang_transitioning:
+			velocity = Vector2.ZERO
 			move_and_slide()
 		was_on_floor_last_frame = is_on_floor()
 		player_death()
@@ -1208,7 +1208,6 @@ func _handle_ledge_hang_input(jump_pressed: bool) -> void:
 		return
 
 	is_ledge_hanging = false
-	is_ledge_hang_transitioning = false
 
 	if not _can_occupy_at_position(ledge_stand_point):
 		# No room to stand on top → wall jump away from wall.
@@ -1223,13 +1222,11 @@ func _handle_ledge_hang_input(jump_pressed: bool) -> void:
 
 	# Room available: tween player onto the ledge top.
 	is_ledge_climbing = true
-	is_ledge_hang_transitioning = false
 	var t := create_tween()
 	t.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	t.tween_property(self, "global_position", ledge_stand_point, LEDGE_CLIMB_TWEEN_TIME)
 	t.finished.connect(func() -> void:
 		is_ledge_climbing = false
-		is_ledge_hang_transitioning = false
 		velocity = Vector2.ZERO
 	)
 
