@@ -727,8 +727,14 @@ func _physics_process(delta):
 	if not is_dashing:
 		# === TRY ENTER LEDGE HANG ===
 		# Must run before wall-stick grab so ledge hang takes priority when eligible.
-		if not is_on_floor():
-			_try_enter_ledge_hang()
+		# If it succeeds, stop here so wall-stick/slide logic cannot fight the tween.
+		if not is_on_floor() and _try_enter_ledge_hang():
+			update_animations(x_input)
+			_update_attack_timers(delta)
+			_update_melee_hitbox_position()
+			was_on_floor_last_frame = is_on_floor()
+			player_death()
+			return
 
 		var on_grippable_wall = wall_probe_data.has_grippable_contact
 		var can_slide_jump_on_wall = wall_probe_data.can_wall_slide_jump
@@ -852,8 +858,8 @@ func _physics_process(delta):
 	move_and_slide()
 	
 	# === STEP-UP MECHANIC ===
-	# Check if we should step up a small obstacle
-	# Works during normal movement AND dash/slide
+	# Keep step-up in the post-slide pass so current floor/crouch collision state
+	# has already settled before we nudge up onto a small obstacle.
 
 	var step_height = 0.0  # Declare OUTSIDE the if block
 
@@ -983,7 +989,10 @@ func check_for_step(x_input: float) -> float:
 func check_for_ledge() -> Vector2:
 	#debug_rays.clear()  # Clear previous frame's debug data
 	
-	if not is_on_wall():
+	var probe_data := _get_wall_probe_data()
+	if not is_on_wall() and not probe_data.has_grippable_contact:
+		return Vector2.ZERO
+	if probe_data.has_slippery_contact and not probe_data.has_grippable_contact:
 		return Vector2.ZERO
 	
 	var world_2d = get_world_2d()
@@ -991,14 +1000,15 @@ func check_for_ledge() -> Vector2:
 		return Vector2.ZERO  # Can't check; skip ledge detection
 	var space_state = world_2d.direct_space_state
 	var wall_normal = get_wall_normal()
+	if wall_normal == Vector2.ZERO:
+		wall_normal = Vector2(-facing_direction, 0.0)
 	
 	# Direction INTO the wall (opposite of normal)
 	var into_wall_direction = -wall_normal.x
 	
 	# Get collision shape info
 	var collision_shape = $CollisionShape2D.shape
-	var dplayer_width = collision_shape.size.x / 2.0
-	var player_height = collision_shape.size.y / 2.0
+	var player_height = _get_player_half_height_world()
 	
 	# Start checking from the BOTTOM of the player (feet level)
 	var player_bottom_y = global_position.y + player_height
@@ -1057,9 +1067,7 @@ func check_for_ledge() -> Vector2:
 				)
 				
 				# Check if there's enough space for the player
-				# Account for current collision shape scale (0.5 when dashing, 1.0 normally)
-				var current_scale = $CollisionShape2D.scale.y
-				var required_height = player_height * current_scale
+				var required_height = player_height
 				# Cast upward from feet level (teleport_pos) to where the player's head would be
 				var space_check_start = teleport_pos
 				var space_check_end = teleport_pos + Vector2(0, -required_height)
@@ -1086,6 +1094,9 @@ func check_for_ledge() -> Vector2:
 
 ## === LEDGE HANG SYSTEM ===
 
+func _invalid_ledge_result() -> Dictionary:
+	return {"valid": false, "hang_point": Vector2.ZERO, "stand_point": Vector2.ZERO, "wall_normal": Vector2.ZERO}
+
 func _get_player_half_height_world() -> float:
 	var collision_node := $CollisionShape2D
 	var collision_shape := collision_node.shape as RectangleShape2D
@@ -1093,10 +1104,25 @@ func _get_player_half_height_world() -> float:
 		return 0.0
 	return collision_shape.size.y * abs(collision_node.scale.y) * 0.5
 
+func _build_ledge_hang_result(stand_point: Vector2, wall_normal: Vector2, hang_x: float = INF) -> Dictionary:
+	var half_h = _get_player_half_height_world()
+	if half_h <= 0.0 or wall_normal == Vector2.ZERO:
+		return _invalid_ledge_result()
+	if is_inf(hang_x):
+		hang_x = global_position.x
+
+	var ledge_top_y := stand_point.y + half_h + LEDGE_HANG_OFFSET_Y
+	return {
+		"valid": true,
+		"hang_point": Vector2(hang_x, ledge_top_y + half_h),
+		"stand_point": stand_point,
+		"wall_normal": wall_normal
+	}
+
 # Find the ledge hang point (current position) and stand point (top of ledge)
 # from current wall probe state. Returns a dict with valid, hang_point, stand_point, wall_normal.
 func _compute_ledge_hang_from_probes() -> Dictionary:
-	var out := {"valid": false, "hang_point": Vector2.ZERO, "stand_point": Vector2.ZERO, "wall_normal": Vector2.ZERO}
+	var out := _invalid_ledge_result()
 
 	var probe_data := _get_wall_probe_data()
 	var first_mid_probe_name := _middle_probe_name(1)
@@ -1160,11 +1186,20 @@ func _compute_ledge_hang_from_probes() -> Dictionary:
 		floor_hit.position.y - half_h - LEDGE_HANG_OFFSET_Y
 	)
 
-	out.valid = true
-	out.hang_point = hang_point
-	out.stand_point = stand_point
-	out.wall_normal = wall_normal
-	return out
+	return _build_ledge_hang_result(stand_point, wall_normal, hang_point.x)
+
+func _compute_ledge_hang_from_legacy_check() -> Dictionary:
+	var wall_normal := get_wall_normal()
+	if wall_normal == Vector2.ZERO:
+		wall_normal = Vector2(-facing_direction, 0.0)
+
+	var stand_point := check_for_ledge()
+	if stand_point == Vector2.ZERO:
+		return _invalid_ledge_result()
+
+	# Preserve the new tweened/top-aligned hang entry, but fall back to the older
+	# ledge raycasts when the probe-only path misses a ledge that was previously valid.
+	return _build_ledge_hang_result(stand_point, wall_normal)
 
 
 # Returns true if the player-shaped body can occupy 'pos' without overlapping world geometry.
@@ -1232,17 +1267,20 @@ func _handle_ledge_hang_input(jump_pressed: bool) -> void:
 
 
 # Evaluate whether probe conditions are right to enter ledge hang and do so if so.
-func _try_enter_ledge_hang() -> void:
-	if is_ledge_hanging or is_ledge_climbing:
-		return
-	if is_on_floor() or is_dashing:
-		return
+func _try_enter_ledge_hang() -> bool:
+	if is_ledge_hanging or is_ledge_climbing or is_ledge_hang_transitioning:
+		return false
+	if is_on_floor() or is_dashing or is_stuck_to_wall:
+		return false
+	if velocity.y < -100.0:
+		return false
 
 	var ledge := _compute_ledge_hang_from_probes()
 	if not ledge.valid:
-		return
+		ledge = _compute_ledge_hang_from_legacy_check()
+	if not ledge.valid:
+		return false
 
-	is_ledge_hanging = true
 	ledge_hang_point = ledge.hang_point
 	ledge_stand_point = ledge.stand_point
 	ledge_hang_wall_normal = ledge.wall_normal
@@ -1262,6 +1300,7 @@ func _try_enter_ledge_hang() -> void:
 		is_ledge_hang_transitioning = false
 		is_ledge_hanging = true
 	)
+	return true
 
 
 ## === DEBUG VISUALIZATION ===
