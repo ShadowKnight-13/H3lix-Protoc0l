@@ -1114,7 +1114,7 @@ func _build_ledge_hang_result(stand_point: Vector2, wall_normal: Vector2, hang_x
 	if half_h <= 0.0 or wall_normal == Vector2.ZERO:
 		return _invalid_ledge_result()
 
-	var ledge_top_y := stand_point.y + half_h + LEDGE_HANG_OFFSET_Y
+	var ledge_top_y = stand_point.y + half_h + LEDGE_HANG_OFFSET_Y
 	return {
 		"valid": true,
 		"hang_point": Vector2(hang_x, ledge_top_y + half_h),
@@ -1176,12 +1176,12 @@ func _compute_ledge_hang_from_probes() -> Dictionary:
 		return out
 
 	# Hang point: align the top of the player with the detected ledge top.
-	var ledge_top_y := floor_hit.position.y
-	var hang_point := Vector2(global_position.x, ledge_top_y + half_h)
+	var ledge_top_y = floor_hit.position.y
+	var hang_point = Vector2(global_position.x, ledge_top_y + half_h)
 
 	# Stand point: position player so feet land on the ledge top surface,
 	# nudged slightly onto the ledge horizontally.
-	var stand_point := Vector2(
+	var stand_point = Vector2(
 		global_position.x + into_wall_dir * LEDGE_HANG_HORIZONTAL_NUDGE,
 		floor_hit.position.y - half_h - LEDGE_HANG_OFFSET_Y
 	)
