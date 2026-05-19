@@ -35,7 +35,7 @@ const LEDGE_GRAB_DISTANCE: float = 30.0  # Reduced - how far above player to che
 const LEDGE_HANG_OFFSET_Y: float = 2.0    # Vertical offset between hang and stand position
 const LEDGE_CLIMB_TWEEN_TIME: float = 0.18  # Seconds to tween onto ledge top
 const LEDGE_HANG_HORIZONTAL_NUDGE: float = 4.0   # Pixels to move onto ledge when standing
-const LEDGE_HANG_MAX_UPWARD_SPEED: float = -100.0  # Allow slight upward motion into a grab
+const LEDGE_HANG_MIN_ENTRY_Y_VELOCITY: float = -100.0  # Do not grab while still rising faster than this
 const LEDGE_FLOOR_PROBE_ITERATIONS: int = 8      # How many vertical steps to scan for ledge top
 const LEDGE_FLOOR_PROBE_STEP: float = 4.0        # Y spacing between probe steps
 const LEDGE_FLOOR_PROBE_UP: float = 16.0         # Ray start offset above each probe step
@@ -1109,12 +1109,10 @@ func _get_wall_normal_or_facing() -> Vector2:
 		wall_normal = Vector2(-facing_direction, 0.0)
 	return wall_normal
 
-func _build_ledge_hang_result(stand_point: Vector2, wall_normal: Vector2, hang_x: float = INF) -> Dictionary:
+func _build_ledge_hang_result(stand_point: Vector2, wall_normal: Vector2, hang_x: float) -> Dictionary:
 	var half_h = _get_player_half_height_world()
 	if half_h <= 0.0 or wall_normal == Vector2.ZERO:
 		return _invalid_ledge_result()
-	if is_inf(hang_x):
-		hang_x = global_position.x
 
 	var ledge_top_y := stand_point.y + half_h + LEDGE_HANG_OFFSET_Y
 	return {
@@ -1199,7 +1197,7 @@ func _compute_ledge_hang_from_legacy_check() -> Dictionary:
 
 	# Preserve the new tweened/top-aligned hang entry, but fall back to the older
 	# ledge raycasts when the probe-only path misses a ledge that was previously valid.
-	return _build_ledge_hang_result(stand_point, wall_normal)
+	return _build_ledge_hang_result(stand_point, wall_normal, global_position.x)
 
 
 # Returns true if the player-shaped body can occupy 'pos' without overlapping world geometry.
@@ -1272,7 +1270,7 @@ func _try_enter_ledge_hang() -> bool:
 		return false
 	if is_on_floor() or is_dashing or is_stuck_to_wall:
 		return false
-	if velocity.y < LEDGE_HANG_MAX_UPWARD_SPEED:
+	if velocity.y < LEDGE_HANG_MIN_ENTRY_Y_VELOCITY:
 		return false
 
 	var ledge := _compute_ledge_hang_from_probes()
