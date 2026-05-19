@@ -35,6 +35,7 @@ const LEDGE_GRAB_DISTANCE: float = 30.0  # Reduced - how far above player to che
 const LEDGE_HANG_OFFSET_Y: float = 2.0    # Vertical offset between hang and stand position
 const LEDGE_CLIMB_TWEEN_TIME: float = 0.18  # Seconds to tween onto ledge top
 const LEDGE_HANG_HORIZONTAL_NUDGE: float = 4.0   # Pixels to move onto ledge when standing
+const LEDGE_HANG_MAX_UPWARD_SPEED: float = -100.0  # Allow slight upward motion into a grab
 const LEDGE_FLOOR_PROBE_ITERATIONS: int = 8      # How many vertical steps to scan for ledge top
 const LEDGE_FLOOR_PROBE_STEP: float = 4.0        # Y spacing between probe steps
 const LEDGE_FLOOR_PROBE_UP: float = 16.0         # Ray start offset above each probe step
@@ -999,9 +1000,7 @@ func check_for_ledge() -> Vector2:
 	if world_2d == null:
 		return Vector2.ZERO  # Can't check; skip ledge detection
 	var space_state = world_2d.direct_space_state
-	var wall_normal = get_wall_normal()
-	if wall_normal == Vector2.ZERO:
-		wall_normal = Vector2(-facing_direction, 0.0)
+	var wall_normal = _get_wall_normal_or_facing()
 	
 	# Direction INTO the wall (opposite of normal)
 	var into_wall_direction = -wall_normal.x
@@ -1104,6 +1103,12 @@ func _get_player_half_height_world() -> float:
 		return 0.0
 	return collision_shape.size.y * abs(collision_node.scale.y) * 0.5
 
+func _get_wall_normal_or_facing() -> Vector2:
+	var wall_normal := get_wall_normal()
+	if wall_normal == Vector2.ZERO:
+		wall_normal = Vector2(-facing_direction, 0.0)
+	return wall_normal
+
 func _build_ledge_hang_result(stand_point: Vector2, wall_normal: Vector2, hang_x: float = INF) -> Dictionary:
 	var half_h = _get_player_half_height_world()
 	if half_h <= 0.0 or wall_normal == Vector2.ZERO:
@@ -1140,10 +1145,7 @@ func _compute_ledge_hang_from_probes() -> Dictionary:
 	if world_2d == null:
 		return out
 
-	var wall_normal := get_wall_normal()
-	if wall_normal == Vector2.ZERO:
-		# Derive from facing direction when CharacterBody2D hasn't registered wall contact yet.
-		wall_normal = Vector2(-facing_direction, 0.0)
+	var wall_normal := _get_wall_normal_or_facing()
 
 	var space_state := world_2d.direct_space_state
 	var into_wall_dir: float = -wall_normal.x  # +1 or -1 toward wall
@@ -1189,9 +1191,7 @@ func _compute_ledge_hang_from_probes() -> Dictionary:
 	return _build_ledge_hang_result(stand_point, wall_normal, hang_point.x)
 
 func _compute_ledge_hang_from_legacy_check() -> Dictionary:
-	var wall_normal := get_wall_normal()
-	if wall_normal == Vector2.ZERO:
-		wall_normal = Vector2(-facing_direction, 0.0)
+	var wall_normal := _get_wall_normal_or_facing()
 
 	var stand_point := check_for_ledge()
 	if stand_point == Vector2.ZERO:
@@ -1272,7 +1272,7 @@ func _try_enter_ledge_hang() -> bool:
 		return false
 	if is_on_floor() or is_dashing or is_stuck_to_wall:
 		return false
-	if velocity.y < -100.0:
+	if velocity.y < LEDGE_HANG_MAX_UPWARD_SPEED:
 		return false
 
 	var ledge := _compute_ledge_hang_from_probes()
