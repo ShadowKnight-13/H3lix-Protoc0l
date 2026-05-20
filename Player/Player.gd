@@ -28,8 +28,10 @@ const DASH_JUMP_AIR_CONTROL: float = 0.3
 const STEP_UP_MAX_HEIGHT: float = 30.0
 const STEP_UP_CHECK_DISTANCE: float = 10.0
 
-# === LEDGE GRAB CONSTANTS ===
-const LEDGE_GRAB_DISTANCE: float = 30.0  # Reduced - how far above player to check for ledge
+# === AUTO LEDGE CLIMB (LEDGE SNAP) CONSTANTS ===
+# Used by _detect_ledge_snap_position() to instant-teleport onto a ledge top.
+# This is separate from the ledge hang system, which uses a tween and state machine.
+const LEDGE_SNAP_DISTANCE: float = 30.0  # How far above the player's feet to scan for a climbable ledge
 
 # === LEDGE HANG CONSTANTS ===
 const LEDGE_HANG_OFFSET_Y: float = 2.0    # Vertical offset between hang and stand position
@@ -872,6 +874,23 @@ func _physics_process(delta):
 		position.y -= step_height
 		stepped_up = true
 	
+	# === AUTO LEDGE CLIMB (LEDGE SNAP) ===
+	# Matches the older reference "ledge grab" behavior: when the player is in the air
+	# and touching a grippable wall, scan for a climbable ledge edge using raycasts.
+	# If a valid ledge top is found and there is adequate overhead space, teleport the
+	# player onto the ledge top and zero vertical velocity instantly.
+	# This is intentionally distinct from the ledge hang system above, which uses a
+	# tween and a state machine — ledge hang already returned early if it activated.
+	if not is_on_floor() and is_on_wall() and not is_stuck_to_wall \
+			and is_on_grippable_wall() and not is_dashing \
+			and not is_ledge_hanging and not is_ledge_climbing and not is_ledge_hang_transitioning:
+		var snap_pos := _detect_ledge_snap_position()
+		if snap_pos != Vector2.ZERO:
+			global_position = snap_pos
+			velocity.y = 0  # Cancel vertical velocity so player lands cleanly
+			is_stuck_to_wall = false
+			wall_stick_time = 0.0
+
 	# Track floor state for next frame
 	was_on_floor_last_frame = is_on_floor()
 	
@@ -986,8 +1005,11 @@ func check_for_step(x_input: float) -> float:
 	return 0.0
 
 
-## === LEDGE GRAB HELPERS ===
-func check_for_ledge() -> Vector2:
+## === AUTO LEDGE CLIMB (LEDGE SNAP) HELPERS ===
+# _detect_ledge_snap_position() scans upward along the wall the player is touching
+# and returns a teleport position placed on the ledge top when a climbable ledge is found.
+# Used by the instant-snap ledge grab and as a fallback by the ledge hang legacy check.
+func _detect_ledge_snap_position() -> Vector2:
 	#debug_rays.clear()  # Clear previous frame's debug data
 	
 	var probe_data := _get_wall_probe_data()
@@ -1017,7 +1039,7 @@ func check_for_ledge() -> Vector2:
 		var check_offset = i * 5.0
 		var check_y = player_bottom_y - check_offset
 		
-		if check_offset > LEDGE_GRAB_DISTANCE:
+		if check_offset > LEDGE_SNAP_DISTANCE:
 			break
 		
 		# Check if there's still a wall at this height
@@ -1191,7 +1213,7 @@ func _compute_ledge_hang_from_probes() -> Dictionary:
 func _compute_ledge_hang_from_legacy_check() -> Dictionary:
 	var wall_normal := _get_wall_normal_or_facing()
 
-	var stand_point := check_for_ledge()
+	var stand_point := _detect_ledge_snap_position()
 	if stand_point == Vector2.ZERO:
 		return _invalid_ledge_result()
 
