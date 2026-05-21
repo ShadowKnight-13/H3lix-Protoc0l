@@ -28,9 +28,6 @@ const DASH_JUMP_AIR_CONTROL: float = 0.3
 const STEP_UP_MAX_HEIGHT: float = 30.0
 const STEP_UP_CHECK_DISTANCE: float = 10.0
 
-# === LEDGE GRAB CONSTANTS ===
-const LEDGE_GRAB_DISTANCE: float = 30.0  # Reduced - how far above player to check for ledge
-
 # === LEDGE HANG CONSTANTS ===
 const LEDGE_HANG_OFFSET_Y: float = 2.0    # Vertical offset between hang and stand position
 const LEDGE_CLIMB_TWEEN_TIME: float = 0.18  # Seconds to tween onto ledge top
@@ -726,7 +723,7 @@ func _physics_process(delta):
 	# Skip normal movement logic if dashing
 	if not is_dashing:
 		# === TRY ENTER LEDGE HANG ===
-		# Must run before wall-stick grab so ledge hang takes priority when eligible.
+		# Must run before wall-stick attach so ledge hang takes priority when eligible.
 		if not is_on_floor():
 			_try_enter_ledge_hang()
 
@@ -745,10 +742,10 @@ func _physics_process(delta):
 		elif on_right_wall and x_input < 0:
 			pressing_away_from_wall = true
 		
-		# Check if we JUST touched a GRIPPABLE wall (and should grab it)
+		# Check if we JUST touched a GRIPPABLE wall (and should attach to it)
 		# UPDATED: Use is_on_grippable_wall() instead of is_on_wall()
 		if on_grippable_wall and not is_on_floor() and not is_stuck_to_wall and not pressing_away_from_wall and not is_ledge_hanging:
-			# Only grab if moving downward (falling) or just barely upward
+			# Only attach if moving downward (falling) or just barely upward
 			if velocity.y >= -100:  # Allow slight upward velocity
 				is_stuck_to_wall = true
 				wall_stick_time = 0.0
@@ -994,113 +991,7 @@ func check_for_step(x_input: float) -> float:
 	
 	return 0.0
 
-
-## === LEDGE GRAB HELPERS ===
-func check_for_ledge() -> Vector2:
-	#debug_rays.clear()  # Clear previous frame's debug data
-	
-	if not is_on_wall():
-		return Vector2.ZERO
-	
-	var world_2d = get_world_2d()
-	if world_2d == null:
-		return Vector2.ZERO  # Can't check; skip ledge detection
-	var space_state = world_2d.direct_space_state
-	var wall_normal = get_wall_normal()
-	
-	# Direction INTO the wall (opposite of normal)
-	var into_wall_direction = -wall_normal.x
-	
-	# Get collision shape info
-	var collision_shape = $CollisionShape2D.shape
-	var dplayer_width = collision_shape.size.x / 2.0
-	var player_height = collision_shape.size.y / 2.0
-	
-	# Start checking from the BOTTOM of the player (feet level)
-	var player_bottom_y = global_position.y + player_height
-	
-	# Check upward in smaller increments for better detection
-	for i in range(6):
-		var check_offset = i * 5.0
-		var check_y = player_bottom_y - check_offset
-		
-		if check_offset > LEDGE_GRAB_DISTANCE:
-			break
-		
-		# Check if there's still a wall at this height
-		# Cast from player position TOWARD the wall
-		var wall_check_start = Vector2(global_position.x, check_y)
-		var wall_check_end = wall_check_start + Vector2(into_wall_direction * 20, 0)
-		
-		# Store debug info
-		if debug_rays_visible:
-			debug_rays.append({"type": "line", "start": wall_check_start, "end": wall_check_end, "color": Color.YELLOW})
-		
-		var wall_query = PhysicsRayQueryParameters2D.create(wall_check_start, wall_check_end)
-		wall_query.exclude = [self]
-		wall_query.collision_mask = 2
-		
-		var wall_result = space_state.intersect_ray(wall_query)
-		
-		# If we DON'T hit a wall at this height, the wall has ended - check for floor
-		if not wall_result:
-			# Now check if there's a floor where the wall used to be
-			# Cast downward from where the wall check ended (into the wall area)
-			var floor_check_start = wall_check_end  # Start from where wall check ended
-			var floor_check_end = floor_check_start + Vector2(0, 50)
-			
-			# Store debug info
-			if debug_rays_visible:
-				debug_rays.append({"type": "line", "start": floor_check_start, "end": floor_check_end, "color": Color.GREEN})
-			# Store debug info
-			#debug_rays.append({"type": "line", "start": floor_check_start, "end": floor_check_end, "color": Color.GREEN})
-			
-			var floor_query = PhysicsRayQueryParameters2D.create(floor_check_start, floor_check_end)
-			floor_query.exclude = [self]
-			floor_query.collision_mask = 2
-			
-			var floor_result = space_state.intersect_ray(floor_query)
-			
-			if floor_result:
-				# Store debug info
-				if debug_rays_visible:
-					debug_rays.append({"type": "circle", "pos": floor_result.position, "color": Color.RED})
-				
-				# Found a valid ledge! But first check if player fits
-				var teleport_pos = Vector2(
-					floor_result.position.x,
-					floor_result.position.y - player_height - 2
-				)
-				
-				# Check if there's enough space for the player
-				# Account for current collision shape scale (0.5 when dashing, 1.0 normally)
-				var current_scale = $CollisionShape2D.scale.y
-				var required_height = player_height * current_scale
-				# Cast upward from feet level (teleport_pos) to where the player's head would be
-				var space_check_start = teleport_pos
-				var space_check_end = teleport_pos + Vector2(0, -required_height)
-				
-				var space_query = PhysicsRayQueryParameters2D.create(space_check_start, space_check_end)
-				space_query.exclude = [self]
-				space_query.collision_mask = 2  # World collision layer
-				
-				if debug_rays_visible:
-					debug_rays.append({"type": "line", "start": space_check_start, "end": space_check_end, "color": Color.CYAN})
-				
-				var space_result = space_state.intersect_ray(space_query)
-				
-				# If we hit something, there's not enough space
-				if space_result:
-					if debug_rays_visible:
-						debug_rays.append({"type": "circle", "pos": space_result.position, "color": Color.ORANGE})
-					continue  # Try next height check
-				
-				# Space is clear - return the teleport position
-				return teleport_pos
-	
-	return Vector2.ZERO
-
-## === LEDGE HANG SYSTEM ===
+## === LEDGE HANG SYSTEM (replaces legacy ledge-grab detection) ===
 
 func _get_player_half_height_world() -> float:
 	var collision_node := $CollisionShape2D

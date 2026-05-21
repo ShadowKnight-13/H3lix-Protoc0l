@@ -6,6 +6,7 @@ A basic 2D platformer game built with Godot Engine 4.2.
 
 - Player character with left/right movement
 - Jump mechanics with gravity
+- Ledge hang + climb movement flow (legacy ledge-grab snap removed)
 - Multiple platforms to jump on
 - Camera that follows the player
 - Physics-based movement
