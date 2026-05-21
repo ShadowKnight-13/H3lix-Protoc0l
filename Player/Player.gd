@@ -1163,6 +1163,13 @@ func _try_enter_ledge_hang() -> void:
 	if not ledge.valid:
 		return
 
+	# Verify there is enough clearance for the player's full collider at the
+	# intended hang position before committing to the hang state and tweening
+	# the player there.  If the space is blocked (e.g. by nearby geometry)
+	# skip the hang transition and let existing fall/slide logic continue.
+	if not _can_occupy_at_position(ledge.hang_point):
+		return
+
 	is_ledge_hanging = true
 	ledge_hang_point = ledge.hang_point
 	ledge_stand_point = ledge.stand_point
