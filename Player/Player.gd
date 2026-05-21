@@ -983,7 +983,7 @@ func check_for_step(x_input: float) -> float:
 			# NOT feet_offset (the detection-ray height which is 0.4 × height).
 			# Using feet_offset here was the regression: the teleport undershoots
 			# by player_height * 0.1 px, leaving the player partially inside the step.
-			var step_top_y = top_result.position.y
+			var step_top_y = top_result.position.y -10
 			var player_bottom_y = global_position.y + player_height / 2.0
 			
 			var step_height_measured = player_bottom_y - step_top_y
