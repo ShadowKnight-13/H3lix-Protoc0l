@@ -951,6 +951,11 @@ func check_for_step(x_input: float) -> float:
 	
 	var result = space_state.intersect_ray(query)
 	
+	if debug_rays_visible:
+		var hit_color = Color.ORANGE if result else Color(1.0, 0.65, 0.0, 0.4)
+		debug_rays.append({"type": "line", "start": ray_start,
+				"end": result.position if result else ray_end, "color": hit_color})
+	
 	# If we hit a wall
 	if result:
 		
@@ -965,10 +970,21 @@ func check_for_step(x_input: float) -> float:
 		
 		var top_result = space_state.intersect_ray(top_query)
 		
+		if debug_rays_visible:
+			var top_color = Color.YELLOW if top_result else Color(1.0, 1.0, 0.0, 0.4)
+			debug_rays.append({"type": "line", "start": top_check_start,
+					"end": top_result.position if top_result else top_check_end, "color": top_color})
+			if top_result:
+				debug_rays.append({"type": "circle", "pos": top_result.position, "color": Color.CYAN})
+		
 		if top_result:
-			# Found the top! Calculate step height
+			# Found the top! Calculate step height.
+			# player_bottom_y must use the actual collision-shape half-height (feet),
+			# NOT feet_offset (the detection-ray height which is 0.4 × height).
+			# Using feet_offset here was the regression: the teleport undershoots
+			# by player_height * 0.1 px, leaving the player partially inside the step.
 			var step_top_y = top_result.position.y
-			var player_bottom_y = global_position.y + feet_offset
+			var player_bottom_y = global_position.y + player_height / 2.0
 			
 			var step_height_measured = player_bottom_y - step_top_y
 			
