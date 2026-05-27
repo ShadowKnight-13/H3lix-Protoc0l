@@ -134,9 +134,7 @@ func kill_player():
 	coyote_timer = 0.0
 
 func damage_player():
-	if is_dead:
-		return
-	if Engine.get_physics_frames() <= _ignore_damage_until_frame:
+	if is_dead or Engine.get_physics_frames() <= _ignore_damage_until_frame:
 		return
 	health = max(health - 1, 0)
 	if health <= 0:
