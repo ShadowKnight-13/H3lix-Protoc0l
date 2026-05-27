@@ -63,6 +63,8 @@ var is_stuck_to_wall := false
 
 ## === HEALTH & STATE FLAGS ===
 var health = 3
+var is_dead := false
+var _ignore_damage_until_frame: int = -1
 var is_wall_jumping := false
 var is_jumping := false
 var is_dash_jumping := false
@@ -108,6 +110,7 @@ func player_death():
 	# When health reaches 0, ask Main to respawn instead of reloading the scene.
 	if health > 0:
 		return
+	is_dead = true
 
 	var main := get_tree().get_first_node_in_group("GameMain")
 	if main and main.has_method("reset_current_level_on_death"):
@@ -119,8 +122,9 @@ func player_death():
 	get_tree().reload_current_scene()
 
 func kill_player():
-	if health <= 0:
+	if health <= 0 or is_dead:
 		return  # Already dead
+	is_dead = true
 	health = 0
 	velocity = Vector2.ZERO
 	set_physics_process(false)
@@ -128,11 +132,21 @@ func kill_player():
 	coyote_timer = 0.0
 
 func damage_player():
+	if is_dead:
+		return
+	if Engine.get_physics_frames() <= _ignore_damage_until_frame:
+		return
 	health = max(health - 1, 0)
+	if health <= 0:
+		is_dead = true
 	$SFX/hurt.play()
 	emit_signal("health_changed", health)
 
-func reset_for_respawn() -> void:
+func reset_for_respawn(spawn_health: int = 3) -> void:
+	health = clampi(spawn_health, 0, 3)
+	is_dead = false
+	_ignore_damage_until_frame = Engine.get_physics_frames() + 1
+
 	# Reset movement/combat state so respawns don't inherit dash/crouch collisions.
 	velocity = Vector2.ZERO
 	set_physics_process(true)

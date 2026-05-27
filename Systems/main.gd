@@ -112,13 +112,13 @@ func respawn_player(full_health: bool = false) -> void:
 		spawn_health = default_spawn_health
 
 	_wrapper_player.global_position = spawn_pos
-	_wrapper_player.health = spawn_health
 
 	# Reset internal movement/dash/crouch/collision state for consistent respawns.
 	if _wrapper_player.has_method("reset_for_respawn"):
-		_wrapper_player.call("reset_for_respawn")
+		_wrapper_player.call("reset_for_respawn", spawn_health)
 	else:
 		# Minimal fallback in case the method isn't present.
+		_wrapper_player.health = spawn_health
 		_wrapper_player.velocity = Vector2.ZERO
 		_wrapper_player.set_physics_process(true)
 
