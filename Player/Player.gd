@@ -23,6 +23,8 @@ const AIR_DASH_HORIZONTAL_TIME: float = 0.15
 const DASH_JUMP_SPEED_MULTIPLIER: float = 1.2
 const DASH_JUMP_HEIGHT_MULTIPLIER: float = 1.3
 const DASH_JUMP_AIR_CONTROL: float = 0.3
+const MAX_HEALTH: int = 3
+const RESPAWN_DAMAGE_GUARD_FRAMES: int = 1
 
 # === STEP-UP / LEDGE CONSTANTS ===
 const STEP_UP_MAX_HEIGHT: float = 30.0
@@ -62,7 +64,7 @@ const WALL_JUMP_LOCK_TIME: float = 0.15
 var is_stuck_to_wall := false
 
 ## === HEALTH & STATE FLAGS ===
-var health = 3
+var health = MAX_HEALTH
 var is_dead := false
 var _ignore_damage_until_frame: int = -1
 var is_wall_jumping := false
@@ -142,10 +144,10 @@ func damage_player():
 	$SFX/hurt.play()
 	emit_signal("health_changed", health)
 
-func reset_for_respawn(spawn_health: int = 3) -> void:
-	health = clampi(spawn_health, 0, 3)
+func reset_for_respawn(spawn_health: int = MAX_HEALTH) -> void:
+	health = clampi(spawn_health, 0, MAX_HEALTH)
 	is_dead = false
-	_ignore_damage_until_frame = Engine.get_physics_frames() + 1
+	_ignore_damage_until_frame = Engine.get_physics_frames() + RESPAWN_DAMAGE_GUARD_FRAMES
 
 	# Reset movement/combat state so respawns don't inherit dash/crouch collisions.
 	velocity = Vector2.ZERO
@@ -194,7 +196,7 @@ func reset_for_respawn(spawn_health: int = 3) -> void:
 	$Hit.visible = false
 
 func heal(amount: int = 1) -> void:
-	health = min(health + amount, 3)
+	health = min(health + amount, MAX_HEALTH)
 	emit_signal("health_changed", health)
 
 func update_animations(x_input: float) -> void:
