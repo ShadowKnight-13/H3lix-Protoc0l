@@ -1403,50 +1403,50 @@ func _probe_air_dash_gap() -> float:
 	var world_2d := get_world_2d()
 	if world_2d == null:
 		return NAN
-	var space_state := world_2d.direct_space_state
+	var space_state = world_2d.direct_space_state
 
-	var collision_node := $CollisionShape2D
-	var src_shape := collision_node.shape as RectangleShape2D
+	var collision_node = $CollisionShape2D
+	var src_shape = collision_node.shape as RectangleShape2D
 	if src_shape == null:
 		return NAN
 
 	# Effective collision half-extents during dash (scale is applied to the shape)
-	var player_half_w := src_shape.size.x * absf(collision_node.scale.x) * 0.5
-	var player_half_h := src_shape.size.y * absf(collision_node.scale.y) * 0.5
-	var player_h      := player_half_h * 2.0
+	var player_half_w = src_shape.size.x * absf(collision_node.scale.x) * 0.5
+	var player_half_h = src_shape.size.y * absf(collision_node.scale.y) * 0.5
+	var player_h      = player_half_h * 2.0
 
 	# The actual centre of the collision shape in world space (offset by node position)
-	var shape_center_y := global_position.y + collision_node.position.y
+	var shape_center_y = global_position.y + collision_node.position.y
 
 	# Probe column: slightly taller than the player so nearby gaps are also detected
-	var probe_half_h := player_half_h + GAP_PROBE_HEIGHT_BONUS * 0.5
-	var probe_top_y  := shape_center_y - probe_half_h
-	var probe_bot_y  := shape_center_y + probe_half_h
+	var probe_half_h = player_half_h + GAP_PROBE_HEIGHT_BONUS * 0.5
+	var probe_top_y  = shape_center_y - probe_half_h
+	var probe_bot_y  = shape_center_y + probe_half_h
 
 	# Horizontal extents of the probe: start at leading edge, end GAP_PROBE_REACH ahead
-	var leading_x   := global_position.x + dash_direction * player_half_w
-	var probe_end_x := leading_x + dash_direction * GAP_PROBE_REACH
+	var leading_x   = global_position.x + dash_direction * player_half_w
+	var probe_end_x = leading_x + dash_direction * GAP_PROBE_REACH
 
-	var total_probe_h := probe_bot_y - probe_top_y
+	var total_probe_h = probe_bot_y - probe_top_y
 	# Requires at least 2 rays to form a meaningful step; GAP_PROBE_RAY_COUNT is 14.
 	if GAP_PROBE_RAY_COUNT < 2 or total_probe_h <= 0.0:
 		return NAN
-	var step := total_probe_h / float(GAP_PROBE_RAY_COUNT - 1)
+	var step = total_probe_h / float(GAP_PROBE_RAY_COUNT - 1)
 
 	# Cast each ray horizontally and record whether it was clear
 	var clear: Array[bool] = []
 	for i in range(GAP_PROBE_RAY_COUNT):
-		var y         := probe_top_y + i * step
-		var ray_start := Vector2(leading_x, y)
-		var ray_end   := Vector2(probe_end_x, y)
-		var q := PhysicsRayQueryParameters2D.create(ray_start, ray_end)
+		var y         = probe_top_y + i * step
+		var ray_start = Vector2(leading_x, y)
+		var ray_end   = Vector2(probe_end_x, y)
+		var q = PhysicsRayQueryParameters2D.create(ray_start, ray_end)
 		q.exclude        = [self]
 		q.collision_mask = GAP_PROBE_COLLISION_MASK
-		var result := space_state.intersect_ray(q)
+		var result = space_state.intersect_ray(q)
 		clear.append(result.is_empty())
 
 		if debug_rays_visible:
-			var dbg_col := Color(0.0, 0.85, 0.0, 0.75) if result.is_empty() \
+			var dbg_col = Color(0.0, 0.85, 0.0, 0.75) if result.is_empty() \
 						  else Color(0.85, 0.15, 0.15, 0.75)
 			debug_rays.append({
 				"type": "line",
@@ -1478,12 +1478,12 @@ func _probe_air_dash_gap() -> float:
 		return NAN  # No opening large enough for the player
 
 	# Centre of the clear band in world Y (shape-centre coordinates)
-	var gap_top          := probe_top_y + best_start * step
-	var gap_bot          := probe_top_y + (best_start + best_len - 1) * step
-	var gap_center_world := (gap_top + gap_bot) * 0.5
+	var gap_top          = probe_top_y + best_start * step
+	var gap_bot          = probe_top_y + (best_start + best_len - 1) * step
+	var gap_center_world = (gap_top + gap_bot) * 0.5
 
 	# Convert to the global_position.y the player needs after snapping
-	var target_pos_y := gap_center_world - collision_node.position.y
+	var target_pos_y = gap_center_world - collision_node.position.y
 
 	# Final safety check: ensure the dash-reduced shape actually fits there
 	if not _can_fit_dash_shape_at(Vector2(global_position.x, target_pos_y)):
@@ -1521,4 +1521,3 @@ func _can_fit_dash_shape_at(pos: Vector2) -> bool:
 
 	var hits := space_state.intersect_shape(qp, 1)
 	return hits.is_empty()
-
