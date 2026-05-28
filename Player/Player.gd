@@ -134,7 +134,7 @@ func kill_player():
 	coyote_timer = 0.0
 
 func damage_player():
-	if is_dead or Engine.get_physics_frames() <= _ignore_damage_until_frame:
+	if is_dead or (_ignore_damage_until_frame >= 0 and Engine.get_physics_frames() <= _ignore_damage_until_frame):
 		return
 	health = max(health - 1, 0)
 	if health <= 0:
@@ -143,7 +143,7 @@ func damage_player():
 	emit_signal("health_changed", health)
 
 func reset_for_respawn(spawn_health: int = MAX_HEALTH) -> void:
-	health = clampi(spawn_health, 1, MAX_HEALTH)
+	health = clampi(spawn_health, 0, MAX_HEALTH)
 	is_dead = false
 	_ignore_damage_until_frame = Engine.get_physics_frames() + RESPAWN_DAMAGE_GUARD_FRAMES
 	emit_signal("health_changed", health)
