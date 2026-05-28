@@ -121,8 +121,7 @@ func respawn_player(full_health: bool = false) -> void:
 		_wrapper_player.health = spawn_health
 		_wrapper_player.velocity = Vector2.ZERO
 		_wrapper_player.set_physics_process(true)
-
-	_wrapper_player.emit_signal("health_changed", _wrapper_player.health)
+		_wrapper_player.emit_signal("health_changed", _wrapper_player.health)
 
 func _clear_current_level() -> void:
 	if current_level_instance and is_instance_valid(current_level_instance):

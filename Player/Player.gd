@@ -143,9 +143,10 @@ func damage_player():
 	emit_signal("health_changed", health)
 
 func reset_for_respawn(spawn_health: int = MAX_HEALTH) -> void:
-	health = clampi(spawn_health, 0, MAX_HEALTH)
+	health = clampi(spawn_health, 1, MAX_HEALTH)
 	is_dead = false
 	_ignore_damage_until_frame = Engine.get_physics_frames() + RESPAWN_DAMAGE_GUARD_FRAMES
+	emit_signal("health_changed", health)
 
 	# Reset movement/combat state so respawns don't inherit dash/crouch collisions.
 	velocity = Vector2.ZERO
