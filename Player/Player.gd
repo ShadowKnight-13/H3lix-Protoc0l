@@ -24,6 +24,15 @@ const DASH_JUMP_SPEED_MULTIPLIER: float = 1.2
 const DASH_JUMP_HEIGHT_MULTIPLIER: float = 1.3
 const DASH_JUMP_AIR_CONTROL: float = 0.3
 const MAX_HEALTH: int = 3
+
+# === AIR-DASH GAP DETECTION ===
+const GAP_PROBE_REACH: float = 90.0        # Horizontal px probed ahead of the leading edge for a gap
+const GAP_PROBE_HEIGHT_BONUS: float = 20.0 # Extra probe height added above+below the dash collision half-height
+const GAP_PROBE_RAY_COUNT: int = 14        # Vertical rays in the forward probe column
+const GAP_PROBE_COLLISION_MASK: int = 2    # World-geometry collision layer (matches tiles/walls)
+const GAP_SNAP_TWEEN_TIME: float = 0.10    # Duration (s) of the vertical snap interpolation
+const GAP_SNAP_COOLDOWN: float = 0.30      # Cooldown after a snap fires to prevent per-frame retriggering
+const GAP_SNAP_MIN_DELTA_Y: float = 2.0    # Minimum Y offset required to bother snapping
 const RESPAWN_DAMAGE_GUARD_FRAMES: int = 2
 
 # === STEP-UP / LEDGE CONSTANTS ===
@@ -88,6 +97,13 @@ var is_air_dive := false
 var air_dash_used := false
 var air_dash_horizontal_timer := 0.0
 var is_crouching := false
+
+## === AIR-DASH GAP SNAP STATE ===
+var _gap_snapping: bool = false       # true while vertical snap tween is active
+var _gap_snap_cooldown: float = 0.0   # prevents retriggering on the same obstruction
+var _gap_snap_target_y: float = 0.0   # target global_position.y for the snap
+var _gap_snap_start_y: float = 0.0    # global_position.y when snap was triggered
+var _gap_snap_timer: float = 0.0      # elapsed time within the snap tween
 
 ## === NODES / CHILDREN ===
 @onready var melee_hitbox: Area2D = $MeleeHitbox
@@ -176,6 +192,10 @@ func reset_for_respawn(spawn_health: int = MAX_HEALTH) -> void:
 	air_dash_used = false
 	air_dash_horizontal_timer = 0.0
 	is_crouching = false
+
+	# Gap-snap state.
+	_gap_snapping = false
+	_gap_snap_cooldown = 0.0
 
 	# Collision shape back to full height.
 	$CollisionShape2D.scale.y = 1.0
@@ -527,6 +547,10 @@ func _physics_process(delta):
 	if dash_cooldown_remaining > 0:
 		dash_cooldown_remaining = max(dash_cooldown_remaining - delta, 0.0)
 	
+	# Decrement gap-snap cooldown so probing re-arms after a full GAP_SNAP_COOLDOWN window
+	if _gap_snap_cooldown > 0.0:
+		_gap_snap_cooldown = maxf(_gap_snap_cooldown - delta, 0.0)
+	
 	# Melee attack input
 	if Input.is_action_just_pressed("attack") or Input.is_action_just_pressed("attack_controller"):
 		_try_attack()
@@ -621,7 +645,8 @@ func _physics_process(delta):
 			dash_time_remaining -= delta
 			
 			if dash_time_remaining <= 0:
-				# Dash ended
+				# Dash ended — cancel any active gap snap
+				_gap_snapping = false
 				is_dashing = false
 				is_air_dive = false
 				air_dash_horizontal_timer = 0.0
@@ -645,11 +670,26 @@ func _physics_process(delta):
 				velocity.x = dash_direction * DASH_SPEED
 				
 				if is_air_dive:
-					# === AIR DASH HORIZONTAL PHASE ===
-					if air_dash_horizontal_timer < AIR_DASH_HORIZONTAL_TIME:
+					# === AIR-DASH GAP DETECTION ===
+					# Once per cooldown window, probe for a wall opening ahead and
+					# snap the player into it so the dash flows through smoothly.
+					if not _gap_snapping and _gap_snap_cooldown <= 0.0:
+						var snap_y := _probe_air_dash_gap()
+						if not is_nan(snap_y) and absf(snap_y - global_position.y) >= GAP_SNAP_MIN_DELTA_Y:
+							_gap_snapping = true
+							_gap_snap_cooldown = GAP_SNAP_COOLDOWN
+							_gap_snap_start_y = global_position.y
+							_gap_snap_target_y = snap_y
+							_gap_snap_timer = 0.0
+
+					# Vertical velocity: suppressed during snap so the interpolation
+					# drives Y; otherwise follow normal air-dive curve.
+					if _gap_snapping:
+						velocity.y = 0.0  # snap tween owns the vertical axis
+					elif air_dash_horizontal_timer < AIR_DASH_HORIZONTAL_TIME:
 						# Horizontal phase - maintain velocity, no gravity
 						air_dash_horizontal_timer += delta
-						velocity.y = 0  # Keep horizontal during this phase
+						velocity.y = 0.0  # Keep horizontal during this phase
 					else:
 						# Horizontal phase over - apply gravity
 						velocity.y += GRAVITY_NORMAL
@@ -660,6 +700,7 @@ func _physics_process(delta):
 				else:
 					# Ground dash - apply gravity normally
 					velocity.y += GRAVITY_NORMAL
+
 	
 	# === INITIATE DASH/DIVE ===
 	if dash_pressed and not is_dashing and dash_cooldown_remaining <= 0:
@@ -862,7 +903,20 @@ func _physics_process(delta):
 	_update_attack_timers(delta)
 	_update_melee_hitbox_position()
 	move_and_slide()
-	
+
+	# === AIR-DASH GAP SNAP: advance vertical interpolation ===
+	# Runs AFTER move_and_slide so physics doesn't fight the snap each frame.
+	# velocity.y was set to 0 above, so move_and_slide only applied horizontal motion;
+	# we now directly place the Y to the eased interpolation target.
+	if _gap_snapping:
+		_gap_snap_timer += delta
+		var t := minf(_gap_snap_timer / GAP_SNAP_TWEEN_TIME, 1.0)
+		# Ease-out quadratic: decelerates smoothly into the gap
+		var t_eased := 1.0 - (1.0 - t) * (1.0 - t)
+		global_position.y = lerpf(_gap_snap_start_y, _gap_snap_target_y, t_eased)
+		if t >= 1.0:
+			_gap_snapping = false
+
 	# === STEP-UP MECHANIC ===
 	# Check if we should step up a small obstacle
 	# Works during normal movement AND dash/slide
@@ -1332,4 +1386,139 @@ func _on_melee_hitbox_area_entered(area: Area2D) -> void:
 func _on_animation_player_animation_finished(anim_name: StringName) -> void:
 	if anim_name == "Getup":
 		stepped_up = false
-	
+
+
+## === AIR-DASH GAP DETECTION ===
+
+# Casts a vertical column of rays in the dash direction to find a wall opening
+# large enough for the player's current (dash-reduced) collision shape.
+#
+# The probe starts at the player's leading edge and reaches GAP_PROBE_REACH px
+# forward.  A ray that misses means open space at that Y; consecutive misses form
+# a candidate gap.  The best (longest) clear run is validated with a shape cast
+# before committing to the snap.
+#
+# Returns the target global_position.y to centre the player in the gap, or NAN.
+func _probe_air_dash_gap() -> float:
+	var world_2d := get_world_2d()
+	if world_2d == null:
+		return NAN
+	var space_state := world_2d.direct_space_state
+
+	var collision_node := $CollisionShape2D
+	var src_shape := collision_node.shape as RectangleShape2D
+	if src_shape == null:
+		return NAN
+
+	# Effective collision half-extents during dash (scale is applied to the shape)
+	var player_half_w := src_shape.size.x * absf(collision_node.scale.x) * 0.5
+	var player_half_h := src_shape.size.y * absf(collision_node.scale.y) * 0.5
+	var player_h      := player_half_h * 2.0
+
+	# The actual centre of the collision shape in world space (offset by node position)
+	var shape_center_y := global_position.y + collision_node.position.y
+
+	# Probe column: slightly taller than the player so nearby gaps are also detected
+	var probe_half_h := player_half_h + GAP_PROBE_HEIGHT_BONUS * 0.5
+	var probe_top_y  := shape_center_y - probe_half_h
+	var probe_bot_y  := shape_center_y + probe_half_h
+
+	# Horizontal extents of the probe: start at leading edge, end GAP_PROBE_REACH ahead
+	var leading_x   := global_position.x + dash_direction * player_half_w
+	var probe_end_x := leading_x + dash_direction * GAP_PROBE_REACH
+
+	var total_probe_h := probe_bot_y - probe_top_y
+	# Requires at least 2 rays to form a meaningful step; GAP_PROBE_RAY_COUNT is 14.
+	if GAP_PROBE_RAY_COUNT < 2 or total_probe_h <= 0.0:
+		return NAN
+	var step := total_probe_h / float(GAP_PROBE_RAY_COUNT - 1)
+
+	# Cast each ray horizontally and record whether it was clear
+	var clear: Array[bool] = []
+	for i in range(GAP_PROBE_RAY_COUNT):
+		var y         := probe_top_y + i * step
+		var ray_start := Vector2(leading_x, y)
+		var ray_end   := Vector2(probe_end_x, y)
+		var q := PhysicsRayQueryParameters2D.create(ray_start, ray_end)
+		q.exclude        = [self]
+		q.collision_mask = GAP_PROBE_COLLISION_MASK
+		var result := space_state.intersect_ray(q)
+		clear.append(result.is_empty())
+
+		if debug_rays_visible:
+			var dbg_col := Color(0.0, 0.85, 0.0, 0.75) if result.is_empty() \
+						  else Color(0.85, 0.15, 0.15, 0.75)
+			debug_rays.append({
+				"type": "line",
+				"start": ray_start,
+				"end": result.position if not result.is_empty() else ray_end,
+				"color": dbg_col
+			})
+
+	# Minimum number of consecutive clear rays required to fit the player
+	var min_clear := maxi(1, int(ceilf(player_h / step)))
+
+	# Find the longest consecutive run of clear rays (best candidate gap)
+	var best_start := -1
+	var best_len   := 0
+	var cur_start  := -1
+	var cur_len    := 0
+	for i in range(GAP_PROBE_RAY_COUNT):
+		if clear[i]:
+			if cur_len == 0:
+				cur_start = i
+			cur_len += 1
+			if cur_len > best_len:
+				best_len  = cur_len
+				best_start = cur_start
+		else:
+			cur_len = 0
+
+	if best_len < min_clear:
+		return NAN  # No opening large enough for the player
+
+	# Centre of the clear band in world Y (shape-centre coordinates)
+	var gap_top          := probe_top_y + best_start * step
+	var gap_bot          := probe_top_y + (best_start + best_len - 1) * step
+	var gap_center_world := (gap_top + gap_bot) * 0.5
+
+	# Convert to the global_position.y the player needs after snapping
+	var target_pos_y := gap_center_world - collision_node.position.y
+
+	# Final safety check: ensure the dash-reduced shape actually fits there
+	if not _can_fit_dash_shape_at(Vector2(global_position.x, target_pos_y)):
+		return NAN
+
+	return target_pos_y
+
+
+# Shape-cast check: can the player's current (dash-reduced) collision shape
+# occupy 'pos' (used as global_position) without overlapping world geometry?
+func _can_fit_dash_shape_at(pos: Vector2) -> bool:
+	var world_2d := get_world_2d()
+	if world_2d == null:
+		return true
+	var space_state := world_2d.direct_space_state
+
+	var collision_node := $CollisionShape2D
+	var src_shape := collision_node.shape as RectangleShape2D
+	if src_shape == null:
+		return true
+
+	# Build a rectangle matching the dash-reduced extents
+	var check_shape      := RectangleShape2D.new()
+	check_shape.size = Vector2(
+		src_shape.size.x * absf(collision_node.scale.x),
+		src_shape.size.y * absf(collision_node.scale.y)
+	)
+
+	var qp := PhysicsShapeQueryParameters2D.new()
+	qp.shape          = check_shape
+	# The collision node has a local Y offset during dash; reproduce it here
+	qp.transform      = Transform2D(0.0, pos + collision_node.position)
+	qp.exclude        = [self]
+	qp.collision_mask = GAP_PROBE_COLLISION_MASK
+
+	var hits := space_state.intersect_shape(qp, 1)
+	return hits.is_empty()
+
