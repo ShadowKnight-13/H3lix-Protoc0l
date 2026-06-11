@@ -1323,7 +1323,7 @@ var _attack_cooldown_timer: float = 0.0
 var melee_offset := Vector2(40, 0) #this can change to match hitbox
 
 func _try_attack() -> void:
-	if is_dead or health <= 0 or is_attacking or _attack_cooldown_timer > 0.0 or is_dashing:
+	if is_dead or is_attacking or _attack_cooldown_timer > 0.0 or is_dashing:
 		return
 
 	is_attacking = true
