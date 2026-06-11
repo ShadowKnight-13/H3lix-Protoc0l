@@ -129,6 +129,7 @@ func player_death():
 	if health > 0:
 		return
 	is_dead = true
+	_reset_attack_state(true)
 
 	var main := get_tree().get_first_node_in_group("GameMain")
 	if main and main.has_method("reset_current_level_on_death"):
@@ -202,23 +203,19 @@ func reset_for_respawn(spawn_health: int = MAX_HEALTH) -> void:
 	$CollisionShape2D.position.y = 0
 
 	# Combat state.
-	is_attacking = false
-	_attack_timer = 0.0
-	_attack_cooldown_timer = 0.0
-	if melee_hitbox:
-		melee_hitbox.monitoring = false
-		melee_hitbox.monitorable = false
-	
-	# --- FIX: Reset the animation player and attack visual ---
-	$AnimationPlayer.stop()
-	$AnimationPlayer.play("Idle")
-	$Hit.visible = false
+	_reset_attack_state(true)
 
 func heal(amount: int = 1) -> void:
 	health = min(health + amount, MAX_HEALTH)
 	emit_signal("health_changed", health)
 
 func update_animations(x_input: float) -> void:
+	if is_dead:
+		if $AnimationPlayer.current_animation == "Attack":
+			$AnimationPlayer.stop()
+		$AnimationPlayer.play("Idle")
+		return
+
 	# 1. ACTION PRIORITY (Non-interruptible states)
 	# These return early so movement logic doesn't overwrite them.
 	if is_attacking:
@@ -1326,7 +1323,7 @@ var _attack_cooldown_timer: float = 0.0
 var melee_offset := Vector2(40, 0) #this can change to match hitbox
 
 func _try_attack() -> void:
-	if is_attacking or _attack_cooldown_timer > 0.0 or is_dashing:
+	if is_dead or is_attacking or _attack_cooldown_timer > 0.0 or is_dashing:
 		return
 
 	is_attacking = true
@@ -1350,6 +1347,21 @@ func _update_attack_timers(delta: float) -> void:
 			is_attacking = false
 			melee_hitbox.monitoring = false
 			melee_hitbox.monitorable = false
+
+func _reset_attack_state(reset_animation: bool = false) -> void:
+	is_attacking = false
+	_attack_timer = 0.0
+	_attack_cooldown_timer = 0.0
+
+	if melee_hitbox:
+		melee_hitbox.monitoring = false
+		melee_hitbox.monitorable = false
+
+	$Hit.visible = false
+
+	if reset_animation:
+		$AnimationPlayer.stop()
+		$AnimationPlayer.play("Idle")
 
 
 func _update_melee_hitbox_position() -> void:
