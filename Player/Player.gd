@@ -122,7 +122,7 @@ var ledge_hang_point: Vector2 = Vector2.ZERO
 var ledge_stand_point: Vector2 = Vector2.ZERO
 var ledge_hang_wall_normal: Vector2 = Vector2.ZERO
 # Moving-platform tracking: set when grabbing a ledge on an AnimatableBody2D.
-var ledge_grabbed_platform: Node2D = null
+var ledge_grabbed_platform: AnimatableBody2D = null
 var ledge_hang_local_offset: Vector2 = Vector2.ZERO
 var ledge_stand_local_offset: Vector2 = Vector2.ZERO
 
@@ -1263,14 +1263,18 @@ func _try_enter_ledge_hang() -> void:
 	ledge_stand_point = ledge.stand_point
 	ledge_hang_wall_normal = ledge.wall_normal
 	# Store moving-platform reference and local offsets so the player stays
-	# anchored to the ledge while it moves.
-	var grabbed_collider: Node2D = ledge.collider
-	if grabbed_collider != null and grabbed_collider is AnimatableBody2D:
-		ledge_grabbed_platform = grabbed_collider
-		ledge_hang_local_offset = ledge_hang_point - grabbed_collider.global_position
-		ledge_stand_local_offset = ledge_stand_point - grabbed_collider.global_position
+	# anchored to the ledge while it moves. The reference is intentionally kept
+	# through the entry tween so it is ready the moment is_ledge_hanging
+	# becomes true again after the transition completes.
+	var ledge_collider := ledge.collider as AnimatableBody2D
+	if ledge_collider != null:
+		ledge_grabbed_platform = ledge_collider
+		ledge_hang_local_offset = ledge_hang_point - ledge_collider.global_position
+		ledge_stand_local_offset = ledge_stand_point - ledge_collider.global_position
 	else:
 		ledge_grabbed_platform = null
+		ledge_hang_local_offset = Vector2.ZERO
+		ledge_stand_local_offset = Vector2.ZERO
 	velocity = Vector2.ZERO
 	is_ledge_hanging = false
 	is_ledge_climbing = true
