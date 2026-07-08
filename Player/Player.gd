@@ -121,6 +121,10 @@ var is_ledge_hang_transitioning := false
 var ledge_hang_point: Vector2 = Vector2.ZERO
 var ledge_stand_point: Vector2 = Vector2.ZERO
 var ledge_hang_wall_normal: Vector2 = Vector2.ZERO
+# Moving-platform tracking: set when grabbing a ledge on an AnimatableBody2D.
+var ledge_grabbed_platform: Node2D = null
+var ledge_hang_local_offset: Vector2 = Vector2.ZERO
+var ledge_stand_local_offset: Vector2 = Vector2.ZERO
 
 signal health_changed
 
@@ -180,6 +184,9 @@ func reset_for_respawn(spawn_health: int = MAX_HEALTH) -> void:
 	ledge_hang_point = Vector2.ZERO
 	ledge_stand_point = Vector2.ZERO
 	ledge_hang_wall_normal = Vector2.ZERO
+	ledge_grabbed_platform = null
+	ledge_hang_local_offset = Vector2.ZERO
+	ledge_stand_local_offset = Vector2.ZERO
 
 	# Jump/dash state.
 	is_jumping = false
@@ -1069,7 +1076,7 @@ func _get_player_half_height_world() -> float:
 # Find the ledge hang point (current position) and stand point (top of ledge)
 # from current wall probe state. Returns a dict with valid, hang_point, stand_point, wall_normal.
 func _compute_ledge_hang_from_probes() -> Dictionary:
-	var out := {"valid": false, "hang_point": Vector2.ZERO, "stand_point": Vector2.ZERO, "wall_normal": Vector2.ZERO}
+	var out := {"valid": false, "hang_point": Vector2.ZERO, "stand_point": Vector2.ZERO, "wall_normal": Vector2.ZERO, "collider": null}
 
 	var probe_data := _get_wall_probe_data()
 	var first_mid_probe_name := _middle_probe_name(1)
@@ -1137,6 +1144,7 @@ func _compute_ledge_hang_from_probes() -> Dictionary:
 	out.hang_point = hang_point
 	out.stand_point = stand_point
 	out.wall_normal = wall_normal
+	out.collider = floor_hit.collider
 	return out
 
 
@@ -1171,7 +1179,20 @@ func _handle_ledge_hang_input(jump_pressed: bool) -> void:
 	# Release hang if player somehow lands (e.g., platform rises).
 	if is_on_floor():
 		is_ledge_hanging = false
+		ledge_grabbed_platform = null
 		return
+
+	# If hanging on a moving platform, update the hang/stand points from the
+	# stored local offsets so the player follows the platform each frame.
+	if ledge_grabbed_platform != null:
+		if is_instance_valid(ledge_grabbed_platform):
+			ledge_hang_point = ledge_grabbed_platform.global_position + ledge_hang_local_offset
+			ledge_stand_point = ledge_grabbed_platform.global_position + ledge_stand_local_offset
+		else:
+			# Platform was freed; drop the reference and let the player fall.
+			ledge_grabbed_platform = null
+			is_ledge_hanging = false
+			return
 
 	# Freeze position and velocity every frame.
 	velocity = Vector2.ZERO
@@ -1185,6 +1206,7 @@ func _handle_ledge_hang_input(jump_pressed: bool) -> void:
 	var pressing_away_from_ledge = x_input != 0.0 and sign(x_input) == sign(ledge_hang_wall_normal.x)
 
 	is_ledge_hanging = false
+	ledge_grabbed_platform = null
 
 	if pressing_away_from_ledge:
 		velocity.y = JUMP_HEIGHT
@@ -1240,6 +1262,15 @@ func _try_enter_ledge_hang() -> void:
 	ledge_hang_point = ledge.hang_point
 	ledge_stand_point = ledge.stand_point
 	ledge_hang_wall_normal = ledge.wall_normal
+	# Store moving-platform reference and local offsets so the player stays
+	# anchored to the ledge while it moves.
+	var grabbed_collider: Node2D = ledge.collider
+	if grabbed_collider != null and grabbed_collider is AnimatableBody2D:
+		ledge_grabbed_platform = grabbed_collider
+		ledge_hang_local_offset = ledge_hang_point - grabbed_collider.global_position
+		ledge_stand_local_offset = ledge_stand_point - grabbed_collider.global_position
+	else:
+		ledge_grabbed_platform = null
 	velocity = Vector2.ZERO
 	is_ledge_hanging = false
 	is_ledge_climbing = true
