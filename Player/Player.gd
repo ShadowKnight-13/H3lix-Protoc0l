@@ -27,8 +27,8 @@ const MAX_HEALTH: int = 3
 
 # === AIR-DASH GAP DETECTION ===
 const GAP_PROBE_REACH: float = 90.0        # Horizontal px probed ahead of the leading edge for a gap
-const GAP_PROBE_HEIGHT_BONUS: float = 20.0 # Extra probe height added above+below the dash collision half-height
-const GAP_PROBE_RAY_COUNT: int = 14        # Vertical rays in the forward probe column
+const GAP_PROBE_HEIGHT_BONUS: float = 35.0 # Extra probe height added above+below the dash collision half-height
+const GAP_PROBE_RAY_COUNT: int = 24        # Vertical rays in the forward probe column
 const GAP_PROBE_COLLISION_MASK: int = 2    # World-geometry collision layer (matches tiles/walls)
 const GAP_SNAP_TWEEN_TIME: float = 0.10    # Duration (s) of the vertical snap interpolation
 const GAP_SNAP_COOLDOWN: float = 0.30      # Cooldown after a snap fires to prevent per-frame retriggering

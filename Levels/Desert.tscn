@@ -1394,7 +1394,7 @@ position = Vector2(9521, -2341)
 position = Vector2(10767.667, -2848.215)
 return_speed = 0.0
 forward_wait_time = 1000.0
-path_points = Array[Vector2]([Vector2(0, 0), Vector2(0, -67)])
+path_points = Array[Vector2]([Vector2(0, 0), Vector2(0, -66)])
 platform_size = Vector2(32, 78)
 puzzle_controlled = true
 
