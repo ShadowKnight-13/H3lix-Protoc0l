@@ -9,6 +9,13 @@ extends TileMapLayer
 ## Seconds the player must wait between consecutive damage hits from this tilemap.
 @export var hurt_cooldown: float = 0.5
 
+# Enable collision detection on all 32 physics layers so the query works regardless
+# of which specific layer the TileSet's physics shapes are configured on.
+const ALL_COLLISION_LAYERS: int = 0xFFFFFFFF
+# Maximum number of overlapping physics bodies returned by intersect_shape.
+# 8 is more than enough to find the cactus TileMapLayer among nearby colliders.
+const MAX_COLLISION_RESULTS: int = 8
+
 var _hurt_timer: float = 0.0
 
 func _physics_process(delta: float) -> void:
@@ -37,10 +44,10 @@ func _player_overlaps_cactus(player: Node2D) -> bool:
 	# Use the collision shape's full world transform so crouching/scaling is handled correctly.
 	qp.transform = cs.global_transform
 	# Check all layers; we filter by collider identity below so any TileSet layer config works.
-	qp.collision_mask = 0xFFFFFFFF
+	qp.collision_mask = ALL_COLLISION_LAYERS
 	qp.exclude = [player]
 
-	var hits := space_state.intersect_shape(qp, 8)
+	var hits := space_state.intersect_shape(qp, MAX_COLLISION_RESULTS)
 	for hit in hits:
 		if hit.get("collider") == self:
 			return true
