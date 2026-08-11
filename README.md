@@ -16,6 +16,7 @@ A basic 2D platformer game built with Godot Engine 4.2.
 - **A / Left Arrow**: Move left
 - **D / Right Arrow**: Move right
 - **W / Space / Up Arrow**: Jump
+- **While ledge hanging**: Press toward the ledge or jump to climb up
 
 ## How to Run
 
