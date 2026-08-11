@@ -1176,6 +1176,7 @@ func _can_occupy_at_position(pos: Vector2) -> bool:
 
 # Start the hang -> climb tween using the latest computed stand point.
 func _begin_ledge_climb() -> void:
+	var target_stand_point := ledge_stand_point
 	is_ledge_hanging = false
 	ledge_grabbed_platform = null
 	ledge_hang_wall_normal = Vector2.ZERO
@@ -1184,7 +1185,7 @@ func _begin_ledge_climb() -> void:
 	is_ledge_climbing = true
 	var t := create_tween()
 	t.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-	t.tween_property(self, "global_position", ledge_stand_point, LEDGE_CLIMB_TWEEN_TIME)
+	t.tween_property(self, "global_position", target_stand_point, LEDGE_CLIMB_TWEEN_TIME)
 	t.finished.connect(func() -> void:
 		is_ledge_climbing = false
 		velocity = Vector2.ZERO
