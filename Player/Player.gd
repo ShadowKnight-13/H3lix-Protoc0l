@@ -1236,7 +1236,7 @@ func _handle_ledge_hang_input(jump_pressed: bool) -> void:
 
 	# If pressing away from the ledge while jumping, perform a wall jump instead of climbing.
 	var pressing_away_from_ledge := x_input != 0.0 and sign(x_input) == sign(ledge_hang_wall_normal.x)
- 
+
 	if pressing_away_from_ledge:
 		_clear_ledge_hang_state(false)
 		velocity.y = JUMP_HEIGHT
