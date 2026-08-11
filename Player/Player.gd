@@ -1178,6 +1178,9 @@ func _can_occupy_at_position(pos: Vector2) -> bool:
 func _begin_ledge_climb() -> void:
 	is_ledge_hanging = false
 	ledge_grabbed_platform = null
+	ledge_hang_wall_normal = Vector2.ZERO
+	ledge_hang_local_offset = Vector2.ZERO
+	ledge_stand_local_offset = Vector2.ZERO
 	is_ledge_climbing = true
 	var t := create_tween()
 	t.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
@@ -1213,7 +1216,7 @@ func _handle_ledge_hang_input(jump_pressed: bool) -> void:
 	global_position = ledge_hang_point
 
 	var x_input := Input.get_axis("move_left", "move_right")
-	var pressing_toward_ledge = x_input != 0.0 and sign(x_input) == -sign(ledge_hang_wall_normal.x)
+	var pressing_toward_ledge := x_input != 0.0 and sign(x_input) == -sign(ledge_hang_wall_normal.x)
 
 	# Let the player mantle by pressing back into the grabbed ledge, while still
 	# preserving the existing jump input flow below.
@@ -1225,7 +1228,7 @@ func _handle_ledge_hang_input(jump_pressed: bool) -> void:
 		return
 
 	# If pressing away from the ledge while jumping, perform a wall jump instead of climbing.
-	var pressing_away_from_ledge = x_input != 0.0 and sign(x_input) == sign(ledge_hang_wall_normal.x)
+	var pressing_away_from_ledge := x_input != 0.0 and sign(x_input) == sign(ledge_hang_wall_normal.x)
 
 	is_ledge_hanging = false
 	ledge_grabbed_platform = null
