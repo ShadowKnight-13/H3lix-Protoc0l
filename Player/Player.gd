@@ -1217,11 +1217,12 @@ func _handle_ledge_hang_input(jump_pressed: bool) -> void:
 	global_position = ledge_hang_point
 
 	var x_input := Input.get_axis("move_left", "move_right")
+	var can_stand_on_ledge := _can_occupy_at_position(ledge_stand_point)
 	var pressing_toward_ledge := x_input != 0.0 and sign(x_input) == -sign(ledge_hang_wall_normal.x)
 
 	# Let the player mantle by pressing back into the grabbed ledge, while still
 	# preserving the existing jump input flow below.
-	if pressing_toward_ledge and _can_occupy_at_position(ledge_stand_point):
+	if pressing_toward_ledge and can_stand_on_ledge:
 		_begin_ledge_climb()
 		return
 
@@ -1244,7 +1245,7 @@ func _handle_ledge_hang_input(jump_pressed: bool) -> void:
 		air_dash_used = false
 		return
 
-	if not _can_occupy_at_position(ledge_stand_point):
+	if not can_stand_on_ledge:
 		# No room to stand on top → wall jump away from wall.
 		velocity.y = JUMP_HEIGHT
 		velocity.x = ledge_hang_wall_normal.x * WALL_JUMP_PUSH_FORCE
