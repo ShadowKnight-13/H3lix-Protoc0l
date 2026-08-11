@@ -1174,14 +1174,21 @@ func _can_occupy_at_position(pos: Vector2) -> bool:
 	return hits.is_empty()
 
 
+# Clears the cached ledge hang state. Keep the wall normal when the caller still
+# needs it to launch a wall jump away from the ledge.
+func _clear_ledge_hang_state(clear_wall_normal: bool = true) -> void:
+	is_ledge_hanging = false
+	ledge_grabbed_platform = null
+	ledge_hang_local_offset = Vector2.ZERO
+	ledge_stand_local_offset = Vector2.ZERO
+	if clear_wall_normal:
+		ledge_hang_wall_normal = Vector2.ZERO
+
+
 # Start the hang -> climb tween using the latest computed stand point.
 func _begin_ledge_climb() -> void:
 	var target_stand_point := ledge_stand_point
-	is_ledge_hanging = false
-	ledge_grabbed_platform = null
-	ledge_hang_wall_normal = Vector2.ZERO
-	ledge_hang_local_offset = Vector2.ZERO
-	ledge_stand_local_offset = Vector2.ZERO
+	_clear_ledge_hang_state()
 	is_ledge_climbing = true
 	var t := create_tween()
 	t.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
@@ -1196,8 +1203,7 @@ func _begin_ledge_climb() -> void:
 func _handle_ledge_hang_input(jump_pressed: bool) -> void:
 	# Release hang if player somehow lands (e.g., platform rises).
 	if is_on_floor():
-		is_ledge_hanging = false
-		ledge_grabbed_platform = null
+		_clear_ledge_hang_state()
 		return
 
 	# If hanging on a moving platform, update the hang/stand points from the
@@ -1208,8 +1214,7 @@ func _handle_ledge_hang_input(jump_pressed: bool) -> void:
 			ledge_stand_point = ledge_grabbed_platform.global_position + ledge_stand_local_offset
 		else:
 			# Platform was freed; drop the reference and let the player fall.
-			ledge_grabbed_platform = null
-			is_ledge_hanging = false
+			_clear_ledge_hang_state()
 			return
 
 	# Freeze position and velocity every frame.
@@ -1231,11 +1236,9 @@ func _handle_ledge_hang_input(jump_pressed: bool) -> void:
 
 	# If pressing away from the ledge while jumping, perform a wall jump instead of climbing.
 	var pressing_away_from_ledge := x_input != 0.0 and sign(x_input) == sign(ledge_hang_wall_normal.x)
-
-	is_ledge_hanging = false
-	ledge_grabbed_platform = null
-
+ 
 	if pressing_away_from_ledge:
+		_clear_ledge_hang_state(false)
 		velocity.y = JUMP_HEIGHT
 		velocity.x = ledge_hang_wall_normal.x * WALL_JUMP_PUSH_FORCE
 		wall_jump_lock = WALL_JUMP_LOCK_TIME
@@ -1247,6 +1250,7 @@ func _handle_ledge_hang_input(jump_pressed: bool) -> void:
 
 	if not can_stand_on_ledge:
 		# No room to stand on top → wall jump away from wall.
+		_clear_ledge_hang_state(false)
 		velocity.y = JUMP_HEIGHT
 		velocity.x = ledge_hang_wall_normal.x * WALL_JUMP_PUSH_FORCE
 		wall_jump_lock = WALL_JUMP_LOCK_TIME
