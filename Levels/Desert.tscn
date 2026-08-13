@@ -1339,7 +1339,7 @@ position = Vector2(3906, 1582)
 position = Vector2(8257, -15)
 
 [node name="Player" parent="." unique_id=509081286 instance=ExtResource("3_bt7jf")]
-position = Vector2(10637.011, -2859.7117)
+position = Vector2(-383.091, 52.45453)
 
 [node name="Camera2D" type="Camera2D" parent="Player" unique_id=2079771188]
 position_smoothing_enabled = true
