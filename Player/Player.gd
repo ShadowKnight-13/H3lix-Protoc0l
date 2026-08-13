@@ -119,7 +119,7 @@ var _gap_snap_timer: float = 0.0      # elapsed time within the snap tween
 # Time (in seconds) for the camera to reach the full look offset.
 @export var look_offset_time: float = 0.4
 # Seconds the player must hold look_up / look_down before the camera starts panning.
-@export var look_offset_delay: float = 2.0
+@export var look_offset_delay: float = 0.75
 
 # Current camera offset driven by look input; interpolated each frame.
 var _look_camera_offset: Vector2 = Vector2.ZERO
