@@ -1461,9 +1461,22 @@ var _attack_cooldown_timer: float = 0.0
 
 var melee_offset := Vector2(40, 0) #this can change to match hitbox
 
+## === DIRECTIONAL ATTACK STATE ===
+var _attack_direction: String = "horizontal"  # "horizontal", "up", or "down"
+
 func _try_attack() -> void:
 	if is_dead or is_attacking or _attack_cooldown_timer > 0.0 or is_dashing:
 		return
+
+	var looking_up := Input.is_action_pressed("look_up") or Input.is_action_pressed("look_up_controller")
+	var looking_down := Input.is_action_pressed("look_down") or Input.is_action_pressed("look_down_controller")
+
+	if looking_up:
+		_attack_direction = "up"
+	elif looking_down:
+		_attack_direction = "down"
+	else:
+		_attack_direction = "horizontal"
 
 	is_attacking = true
 	_attack_timer = attack_duration
@@ -1473,6 +1486,8 @@ func _try_attack() -> void:
 
 	melee_hitbox.monitoring = true
 	melee_hitbox.monitorable = true
+
+	_update_melee_hitbox_position()
 
 
 
@@ -1486,6 +1501,8 @@ func _update_attack_timers(delta: float) -> void:
 			is_attacking = false
 			melee_hitbox.monitoring = false
 			melee_hitbox.monitorable = false
+			melee_hitbox.rotation = 0.0
+			_attack_direction = "horizontal"
 
 func _reset_attack_state(reset_animation: bool = false) -> void:
 	is_attacking = false
@@ -1495,6 +1512,9 @@ func _reset_attack_state(reset_animation: bool = false) -> void:
 	if melee_hitbox:
 		melee_hitbox.monitoring = false
 		melee_hitbox.monitorable = false
+		melee_hitbox.rotation = 0.0
+
+	_attack_direction = "horizontal"
 
 	$Hit.visible = false
 
@@ -1505,7 +1525,16 @@ func _reset_attack_state(reset_animation: bool = false) -> void:
 
 func _update_melee_hitbox_position() -> void:
 	if melee_hitbox:
-		melee_hitbox.position = Vector2(melee_offset.x * facing_direction, melee_offset.y)
+		match _attack_direction:
+			"up":
+				melee_hitbox.position = Vector2(0, -melee_offset.x)
+				melee_hitbox.rotation = -PI / 2.0
+			"down":
+				melee_hitbox.position = Vector2(0, melee_offset.x)
+				melee_hitbox.rotation = PI / 2.0
+			_:
+				melee_hitbox.position = Vector2(melee_offset.x * facing_direction, melee_offset.y)
+				melee_hitbox.rotation = 0.0
 
 
 func _on_melee_hitbox_body_entered(body: Node2D) -> void:
