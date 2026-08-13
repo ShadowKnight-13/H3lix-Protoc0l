@@ -118,9 +118,13 @@ var _gap_snap_timer: float = 0.0      # elapsed time within the snap tween
 @export var look_offset_distance: float = 150.0
 # Time (in seconds) for the camera to reach the full look offset.
 @export var look_offset_time: float = 0.4
+# Seconds the player must hold look_up / look_down before the camera starts panning.
+@export var look_offset_delay: float = 2.0
 
 # Current camera offset driven by look input; interpolated each frame.
 var _look_camera_offset: Vector2 = Vector2.ZERO
+# How long look_up or look_down has been continuously held this press.
+var _look_hold_time: float = 0.0
 
 var debug_rays = []
 var debug_rays_visible := false
@@ -221,6 +225,7 @@ func reset_for_respawn(spawn_health: int = MAX_HEALTH) -> void:
 
 	# Look camera offset.
 	_look_camera_offset = Vector2.ZERO
+	_look_hold_time = 0.0
 	if camera != null:
 		camera.offset = Vector2.ZERO
 
@@ -974,14 +979,16 @@ func _physics_process(delta):
 ## === LOOK CAMERA OFFSET ===
 # Reads look_up / look_down input and smoothly adjusts camera.offset each frame.
 # When both are held simultaneously, look_up wins (up takes priority).
-# Suppressed during ledge hang / ledge climb so the hang camera position is stable.
+# Suppressed during ledge hang / ledge climb / quick-drop so those
+# states can own the camera position without interference.
 func _update_look_offset(delta: float) -> void:
 	if camera == null:
 		return
 
-	# Suppress look panning while ledge hang / climb is active so those
+	# Suppress look panning while ledge hang / climb or quick-drop is active so those
 	# states can own the camera position without interference.
-	if is_ledge_hanging or is_ledge_climbing:
+	if is_ledge_hanging or is_ledge_climbing or quick_drop_lock > 0.0:
+		_look_hold_time = 0.0
 		_look_camera_offset = _look_camera_offset.move_toward(Vector2.ZERO, (look_offset_distance / maxf(look_offset_time, 0.001)) * delta)
 		camera.offset = _look_camera_offset
 		return
@@ -990,10 +997,16 @@ func _update_look_offset(delta: float) -> void:
 	var looking_up := Input.is_action_pressed("look_up") or Input.is_action_pressed("look_up_controller")
 	var looking_down := Input.is_action_pressed("look_down") or Input.is_action_pressed("look_down_controller")
 
-	if looking_up:
-		target_offset = Vector2(0.0, -look_offset_distance)
-	elif looking_down:
-		target_offset = Vector2(0.0, look_offset_distance)
+	if looking_up or looking_down:
+		_look_hold_time += delta
+	else:
+		_look_hold_time = 0.0
+
+	if _look_hold_time >= look_offset_delay:
+		if looking_up:
+			target_offset = Vector2(0.0, -look_offset_distance)
+		elif looking_down:
+			target_offset = Vector2(0.0, look_offset_distance)
 
 	var speed := look_offset_distance / maxf(look_offset_time, 0.001)
 	_look_camera_offset = _look_camera_offset.move_toward(target_offset, speed * delta)
