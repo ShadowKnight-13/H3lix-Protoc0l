@@ -9,6 +9,8 @@ const FRICTION: float = 22.5
 const GRAVITY_NORMAL: float = 19
 const GRAVITY_WALL_SLIDE: float = 100.5
 const WALL_JUMP_PUSH_FORCE: float = 600.0
+const QUICK_DROP_SPEED: float = 400.0       # Downward velocity applied on quick-drop from wall/ledge
+const QUICK_DROP_LOCK_TIME: float = 0.15    # Seconds to prevent re-attaching after a quick drop
 
 # === COYOTE TIME ===
 const COYOTE_TIME: float = 0.2  # seconds after leaving a platform where jump is still allowed 
@@ -70,6 +72,7 @@ const WALL_STICK_DURATION := 0.5
 
 var wall_jump_lock: float = 0.0
 const WALL_JUMP_LOCK_TIME: float = 0.15
+var quick_drop_lock: float = 0.0
 var is_stuck_to_wall := false
 
 ## === HEALTH & STATE FLAGS ===
@@ -186,6 +189,7 @@ func reset_for_respawn(spawn_health: int = MAX_HEALTH) -> void:
 	# Wall/ledge related state.
 	wall_stick_time = 0.0
 	wall_jump_lock = 0.0
+	quick_drop_lock = 0.0
 	is_stuck_to_wall = false
 	is_wall_jumping = false
 	is_ledge_hanging = false
@@ -799,7 +803,7 @@ func _physics_process(delta):
 	if not is_dashing:
 		# === TRY ENTER LEDGE HANG ===
 		# Must run before wall-stick attach so ledge hang takes priority when eligible.
-		if not is_on_floor():
+		if not is_on_floor() and quick_drop_lock <= 0.0:
 			_try_enter_ledge_hang()
 
 		var on_grippable_wall = wall_probe_data.has_grippable_contact
@@ -819,7 +823,7 @@ func _physics_process(delta):
 		
 		# Check if we JUST touched a GRIPPABLE wall (and should attach to it)
 		# UPDATED: Use is_on_grippable_wall() instead of is_on_wall()
-		if on_grippable_wall and not is_on_floor() and not is_stuck_to_wall and not pressing_away_from_wall and not is_ledge_hanging:
+		if on_grippable_wall and not is_on_floor() and not is_stuck_to_wall and not pressing_away_from_wall and not is_ledge_hanging and quick_drop_lock <= 0.0:
 			# Only attach if moving downward (falling) or just barely upward
 			if velocity.y >= -100:  # Allow slight upward velocity
 				is_stuck_to_wall = true
@@ -828,8 +832,17 @@ func _physics_process(delta):
 		# === WALL STICK & SLIDE PHYSICS ===
 		var is_wall_sliding = false
 
+		# Quick drop: looking down while stuck to a wall releases grip and drops fast.
+		var looking_down_input := Input.is_action_pressed("look_down") or Input.is_action_pressed("look_down_controller")
+
+		if is_stuck_to_wall and looking_down_input:
+			is_stuck_to_wall = false
+			wall_stick_time = 0.0
+			velocity.y = QUICK_DROP_SPEED
+			quick_drop_lock = QUICK_DROP_LOCK_TIME
+			skip_gravity_this_frame = true
 		# Apply wall stick/slide physics only when top+middle probes are grippable.
-		if is_stuck_to_wall and can_slide_jump_on_wall and not is_on_floor():
+		elif is_stuck_to_wall and can_slide_jump_on_wall and not is_on_floor():
 			is_wall_sliding = true
 	
 			if wall_stick_time < WALL_STICK_DURATION:
@@ -880,6 +893,8 @@ func _physics_process(delta):
 					pass
 		
 		# Horizontal movement (removed to keep output cleaner - doesn't affect velocity.y)
+		if quick_drop_lock > 0.0:
+			quick_drop_lock -= delta
 		if wall_jump_lock > 0.0:
 			wall_jump_lock -= delta
 			velocity.x = lerp(velocity.x, x_input * SPEED, 0.075)
@@ -1264,6 +1279,14 @@ func _handle_ledge_hang_input(jump_pressed: bool) -> void:
 	# Freeze position and velocity every frame.
 	velocity = Vector2.ZERO
 	global_position = ledge_hang_point
+
+	# Quick drop: looking down while hanging releases grip and drops fast.
+	var looking_down := Input.is_action_pressed("look_down") or Input.is_action_pressed("look_down_controller")
+	if looking_down:
+		_clear_ledge_hang_state(false)
+		velocity.y = QUICK_DROP_SPEED
+		quick_drop_lock = QUICK_DROP_LOCK_TIME
+		return
 
 	var x_input := Input.get_axis("move_left", "move_right")
 	var can_stand_on_ledge := _can_occupy_at_position(ledge_stand_point)
