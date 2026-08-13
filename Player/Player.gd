@@ -9,7 +9,7 @@ const FRICTION: float = 22.5
 const GRAVITY_NORMAL: float = 19
 const GRAVITY_WALL_SLIDE: float = 100.5
 const WALL_JUMP_PUSH_FORCE: float = 600.0
-const QUICK_DROP_SPEED: float = 400.0       # Downward velocity applied on quick-drop from wall/ledge
+const QUICK_DROP_SPEED: float = 200.0       # Downward velocity applied on quick-drop from wall/ledge
 const QUICK_DROP_LOCK_TIME: float = 0.15    # Seconds to prevent re-attaching after a quick drop
 
 # === COYOTE TIME ===
