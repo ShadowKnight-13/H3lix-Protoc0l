@@ -108,6 +108,16 @@ var _gap_snap_timer: float = 0.0      # elapsed time within the snap tween
 ## === NODES / CHILDREN ===
 @onready var melee_hitbox: Area2D = $MeleeHitbox
 @onready var interaction_area = $InteractionArea
+@onready var camera: Camera2D = $Camera2D
+
+## === LOOK CAMERA OFFSET ===
+# How far (in pixels) the camera shifts when look_up / look_down is held.
+@export var look_offset_distance: float = 150.0
+# Time (in seconds) for the camera to reach the full look offset.
+@export var look_offset_time: float = 0.4
+
+# Current camera offset driven by look input; interpolated each frame.
+var _look_camera_offset: Vector2 = Vector2.ZERO
 
 var debug_rays = []
 var debug_rays_visible := false
@@ -204,6 +214,11 @@ func reset_for_respawn(spawn_health: int = MAX_HEALTH) -> void:
 	# Gap-snap state.
 	_gap_snapping = false
 	_gap_snap_cooldown = 0.0
+
+	# Look camera offset.
+	_look_camera_offset = Vector2.ZERO
+	if camera != null:
+		camera.offset = Vector2.ZERO
 
 	# Collision shape back to full height.
 	$CollisionShape2D.scale.y = 1.0
@@ -938,7 +953,36 @@ func _physics_process(delta):
 	# Track floor state for next frame
 	was_on_floor_last_frame = is_on_floor()
 	
+	_update_look_offset(delta)
 	player_death()
+
+## === LOOK CAMERA OFFSET ===
+# Reads look_up / look_down input and smoothly adjusts camera.offset each frame.
+# When both are held simultaneously, look_up wins (up takes priority).
+# Suppressed during ledge hang / ledge climb so the hang camera position is stable.
+func _update_look_offset(delta: float) -> void:
+	if camera == null:
+		return
+
+	# Suppress look panning while ledge hang / climb is active so those
+	# states can own the camera position without interference.
+	if is_ledge_hanging or is_ledge_climbing:
+		_look_camera_offset = _look_camera_offset.move_toward(Vector2.ZERO, (look_offset_distance / maxf(look_offset_time, 0.001)) * delta)
+		camera.offset = _look_camera_offset
+		return
+
+	var target_offset := Vector2.ZERO
+	var looking_up := Input.is_action_pressed("look_up") or Input.is_action_pressed("look_up_controller")
+	var looking_down := Input.is_action_pressed("look_down") or Input.is_action_pressed("look_down_controller")
+
+	if looking_up:
+		target_offset = Vector2(0.0, -look_offset_distance)
+	elif looking_down:
+		target_offset = Vector2(0.0, look_offset_distance)
+
+	var speed := look_offset_distance / maxf(look_offset_time, 0.001)
+	_look_camera_offset = _look_camera_offset.move_toward(target_offset, speed * delta)
+	camera.offset = _look_camera_offset
 
 func can_stand_up() -> bool:
 	if $CollisionShape2D.scale.y >= 1.0:
