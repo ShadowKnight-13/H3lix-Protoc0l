@@ -79,6 +79,7 @@ var is_stuck_to_wall := false
 ## === HEALTH & STATE FLAGS ===
 var health = MAX_HEALTH
 var is_dead := false
+var is_hurt := false
 var _ignore_damage_until_frame: int = -1
 var is_wall_jumping := false
 var is_jumping := false
@@ -178,12 +179,17 @@ func damage_player():
 	health = max(health - 1, 0)
 	if health <= 0:
 		is_dead = true
-	$SFX/hurt.play()
+		is_hurt = false
+		$SFX/hurt.play()
+	else:
+		is_hurt = true
+		$AnimationPlayer.play("Damage")
 	emit_signal("health_changed", health)
 
 func reset_for_respawn(spawn_health: int = MAX_HEALTH) -> void:
 	health = clampi(spawn_health, 1, MAX_HEALTH)
 	is_dead = false
+	is_hurt = false
 	_ignore_damage_until_frame = Engine.get_physics_frames() + RESPAWN_DAMAGE_GUARD_FRAMES
 	emit_signal("health_changed", health)
 
@@ -250,6 +256,11 @@ func update_animations(x_input: float) -> void:
 
 	# 1. ACTION PRIORITY (Non-interruptible states)
 	# These return early so movement logic doesn't overwrite them.
+	if is_hurt:
+		if $AnimationPlayer.current_animation != "Damage":
+			$AnimationPlayer.play("Damage")
+		return
+
 	if is_attacking:
 		#$AnimationPlayer.play("Attack") 
 		return
@@ -520,6 +531,8 @@ func can_wall_slide_jump() -> bool:
 
 func _ready() -> void:
 	$Hit.visible = false
+	if not $AnimationPlayer.animation_finished.is_connected(_on_animation_player_animation_finished):
+		$AnimationPlayer.animation_finished.connect(_on_animation_player_animation_finished)
 	# Support enemies that use Area2D hurtboxes (e.g. DogEnemy Hurtbox).
 	if melee_hitbox and not melee_hitbox.area_entered.is_connected(_on_melee_hitbox_area_entered):
 		melee_hitbox.area_entered.connect(_on_melee_hitbox_area_entered)
@@ -1584,6 +1597,8 @@ func _try_downward_attack_bounce() -> void:
 		velocity.y = BOUNCE_VELOCITY
 
 func _on_animation_player_animation_finished(anim_name: StringName) -> void:
+	if anim_name == "Damage":
+		is_hurt = false
 	if anim_name == "Getup":
 		stepped_up = false
 
