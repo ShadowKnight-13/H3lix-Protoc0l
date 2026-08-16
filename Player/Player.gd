@@ -1473,16 +1473,21 @@ func _try_attack() -> void:
 
 	if looking_up:
 		_attack_direction = "up"
+		$AnimationPlayer.play("Attack_Up")
+		print("Attack Up")
 	elif looking_down:
 		_attack_direction = "down"
+		$AnimationPlayer.play("Attack_Down")
+		print("Attack Down")
 	else:
 		_attack_direction = "horizontal"
+		$AnimationPlayer.play("Attack")
+		print("Attack Horizontal")
 
 	is_attacking = true
 	_attack_timer = attack_duration
 	_attack_cooldown_timer = attack_cooldown
-	$AnimationPlayer.play("Attack")
-	print("Attack started")
+	
 
 	melee_hitbox.monitoring = true
 	melee_hitbox.monitorable = true
