@@ -249,6 +249,7 @@ func heal(amount: int = 1) -> void:
 
 func update_animations(x_input: float) -> void:
 	if is_dead:
+		is_hurt = false
 		if $AnimationPlayer.current_animation == "Attack":
 			$AnimationPlayer.stop()
 		$AnimationPlayer.play("Idle")
