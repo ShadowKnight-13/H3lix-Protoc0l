@@ -3,6 +3,7 @@ class_name Player
 
 const SPEED = 300.01
 const JUMP_HEIGHT: float = -500.0
+const BOUNCE_VELOCITY: float = -350.0
 const JUMP_CUT_MULTIPLIER: float = 0.2
 const FRICTION: float = 22.5
 
@@ -1553,6 +1554,7 @@ func _on_melee_hitbox_body_entered(body: Node2D) -> void:
 
 	if body.has_method("take_damage"):
 		body.take_damage(1)
+		_try_downward_attack_bounce()
 
 func _on_melee_hitbox_area_entered(area: Area2D) -> void:
 	if not is_attacking:
@@ -1562,16 +1564,24 @@ func _on_melee_hitbox_area_entered(area: Area2D) -> void:
 	# Try the area itself, then parent, then owner.
 	if area.has_method("take_damage"):
 		area.call("take_damage", 1)
+		_try_downward_attack_bounce()
 		return
 
 	var parent := area.get_parent()
 	if parent and parent.has_method("take_damage"):
 		parent.call("take_damage", 1)
+		_try_downward_attack_bounce()
 		return
 
 	var owner_node := area.owner
 	if owner_node and owner_node.has_method("take_damage"):
 		owner_node.call("take_damage", 1)
+		_try_downward_attack_bounce()
+
+func _try_downward_attack_bounce() -> void:
+	# Downward attack bounce: pogo off enemy when hit mid-air.
+	if _attack_direction == "down" and not is_on_floor():
+		velocity.y = BOUNCE_VELOCITY
 
 func _on_animation_player_animation_finished(anim_name: StringName) -> void:
 	if anim_name == "Getup":
