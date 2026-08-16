@@ -529,7 +529,7 @@ func _physics_process(delta):
 		player_death()
 		return
 
-	var x_input = Input.get_axis("move_left", "move_right")
+	var x_input = get_movement_input()
 	var jump_pressed := Input.is_action_just_pressed("jump") or Input.is_action_just_pressed("jump_controller")
 	var jump_released := Input.is_action_just_released("jump") or Input.is_action_just_released("jump_controller")
 	var dash_pressed := Input.is_action_just_pressed("dash") or Input.is_action_just_pressed("dash_controller")
@@ -993,16 +993,21 @@ func _update_look_offset(delta: float) -> void:
 		camera.offset = _look_camera_offset
 		return
 
+	# NEW: Only allow the look-camera pan while the player is standing still.
+	# "Standing still" = grounded and effectively not moving horizontally.
+	const LOOK_STILL_VELOCITY_THRESHOLD := 5.0
+	var is_standing_still = is_on_floor() and abs(velocity.x) <= LOOK_STILL_VELOCITY_THRESHOLD and not is_dashing and not is_crouching
+
 	var target_offset := Vector2.ZERO
 	var looking_up := Input.is_action_pressed("look_up") or Input.is_action_pressed("look_up_controller")
 	var looking_down := Input.is_action_pressed("look_down") or Input.is_action_pressed("look_down_controller")
 
-	if looking_up or looking_down:
+	if is_standing_still and (looking_up or looking_down):
 		_look_hold_time += delta
 	else:
 		_look_hold_time = 0.0
 
-	if _look_hold_time >= look_offset_delay:
+	if is_standing_still and _look_hold_time >= look_offset_delay:
 		if looking_up:
 			target_offset = Vector2(0.0, -look_offset_distance)
 		elif looking_down:
@@ -1301,7 +1306,7 @@ func _handle_ledge_hang_input(jump_pressed: bool) -> void:
 		quick_drop_lock = QUICK_DROP_LOCK_TIME
 		return
 
-	var x_input := Input.get_axis("move_left", "move_right")
+	var x_input := get_movement_input()
 	var can_stand_on_ledge := _can_occupy_at_position(ledge_stand_point)
 	var pressing_toward_ledge = x_input != 0.0 and sign(x_input) == -sign(ledge_hang_wall_normal.x)
 
@@ -1706,3 +1711,10 @@ func _can_fit_dash_shape_at(pos: Vector2) -> bool:
 
 	var hits := space_state.intersect_shape(qp, 1)
 	return hits.is_empty()
+	
+func get_movement_input() -> float:
+	var raw := Input.get_axis("move_left", "move_right")
+	const THRESHOLD := 0.3
+	if abs(raw) > THRESHOLD:
+		return sign(raw)
+	return 0.0
