@@ -515,14 +515,14 @@ texture = ExtResource("3_j23h2")
 [node name="Hit2" type="Sprite2D" parent="." unique_id=1853026852]
 visible = false
 texture_filter = 1
-position = Vector2(0, -24)
+position = Vector2(0, -29)
 rotation = -1.5707964
 texture = ExtResource("3_j23h2")
 
 [node name="Hit3" type="Sprite2D" parent="." unique_id=1798166628]
 visible = false
 texture_filter = 1
-position = Vector2(0, 24)
+position = Vector2(0, 30)
 rotation = 1.5707964
 texture = ExtResource("3_j23h2")
 

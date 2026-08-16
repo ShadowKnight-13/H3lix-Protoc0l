@@ -250,7 +250,7 @@ func update_animations(x_input: float) -> void:
 	# 1. ACTION PRIORITY (Non-interruptible states)
 	# These return early so movement logic doesn't overwrite them.
 	if is_attacking:
-		$AnimationPlayer.play("Attack") 
+		#$AnimationPlayer.play("Attack") 
 		return
 		
 	if is_dashing:
