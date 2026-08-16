@@ -3,7 +3,7 @@ class_name Player
 
 const SPEED = 300.01
 const JUMP_HEIGHT: float = -500.0
-const BOUNCE_VELOCITY: float = -350.0
+const BOUNCE_VELOCITY: float = -500.0
 const JUMP_CUT_MULTIPLIER: float = 0.2
 const FRICTION: float = 22.5
 
