@@ -42,6 +42,10 @@ const RESPAWN_DAMAGE_GUARD_FRAMES: int = 2
 @export var hitstop_duration: float = 0.075
 @export var hitstop_time_scale: float = 0.05
 
+# === ENEMY HIT FREEZE-FRAME ===
+@export var enemy_hit_freeze_duration: float = 0.25
+@export var enemy_hit_freeze_time_scale: float = 0.0
+
 # === STEP-UP / LEDGE CONSTANTS ===
 const STEP_UP_MAX_HEIGHT: float = 30.0
 const STEP_UP_CHECK_DISTANCE: float = 10.0
@@ -190,17 +194,17 @@ func damage_player():
 	else:
 		is_hurt = true
 		$AnimationPlayer.play("Damage")
-		_apply_hitstop()
+		_apply_hitstop(hitstop_duration, hitstop_time_scale)
 	emit_signal("health_changed", health)
 
-func _apply_hitstop() -> void:
+func _apply_hitstop(duration: float, time_scale: float) -> void:
 	if _hitstop_active:
 		return
 	_hitstop_active = true
 	_hitstop_generation += 1
 	var gen := _hitstop_generation
-	Engine.time_scale = hitstop_time_scale
-	await get_tree().create_timer(hitstop_duration, true, false, true).timeout
+	Engine.time_scale = time_scale
+	await get_tree().create_timer(duration, true, false, true).timeout
 	if gen == _hitstop_generation:
 		Engine.time_scale = 1.0
 		_hitstop_active = false
@@ -1592,6 +1596,7 @@ func _on_melee_hitbox_body_entered(body: Node2D) -> void:
 
 	if body.has_method("take_damage"):
 		body.take_damage(1)
+		_apply_hitstop(enemy_hit_freeze_duration, enemy_hit_freeze_time_scale)
 		_try_downward_attack_bounce()
 
 func _on_melee_hitbox_area_entered(area: Area2D) -> void:
@@ -1602,18 +1607,21 @@ func _on_melee_hitbox_area_entered(area: Area2D) -> void:
 	# Try the area itself, then parent, then owner.
 	if area.has_method("take_damage"):
 		area.call("take_damage", 1)
+		_apply_hitstop(enemy_hit_freeze_duration, enemy_hit_freeze_time_scale)
 		_try_downward_attack_bounce()
 		return
 
 	var parent := area.get_parent()
 	if parent and parent.has_method("take_damage"):
 		parent.call("take_damage", 1)
+		_apply_hitstop(enemy_hit_freeze_duration, enemy_hit_freeze_time_scale)
 		_try_downward_attack_bounce()
 		return
 
 	var owner_node := area.owner
 	if owner_node and owner_node.has_method("take_damage"):
 		owner_node.call("take_damage", 1)
+		_apply_hitstop(enemy_hit_freeze_duration, enemy_hit_freeze_time_scale)
 		_try_downward_attack_bounce()
 
 func _try_downward_attack_bounce() -> void:
