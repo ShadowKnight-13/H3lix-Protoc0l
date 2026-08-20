@@ -38,6 +38,10 @@ const GAP_SNAP_COOLDOWN: float = 0.30      # Cooldown after a snap fires to prev
 const GAP_SNAP_MIN_DELTA_Y: float = 2.0    # Minimum Y offset required to bother snapping
 const RESPAWN_DAMAGE_GUARD_FRAMES: int = 2
 
+# === HITSTOP / FREEZE-FRAME ===
+@export var hitstop_duration: float = 0.25
+@export var hitstop_time_scale: float = 0.05
+
 # === STEP-UP / LEDGE CONSTANTS ===
 const STEP_UP_MAX_HEIGHT: float = 30.0
 const STEP_UP_CHECK_DISTANCE: float = 10.0
@@ -81,6 +85,8 @@ var health = MAX_HEALTH
 var is_dead := false
 var is_hurt := false
 var _ignore_damage_until_frame: int = -1
+var _hitstop_active: bool = false
+var _hitstop_generation: int = 0
 var is_wall_jumping := false
 var is_jumping := false
 var is_dash_jumping := false
@@ -184,9 +190,27 @@ func damage_player():
 	else:
 		is_hurt = true
 		$AnimationPlayer.play("Damage")
+		_apply_hitstop()
 	emit_signal("health_changed", health)
 
+func _apply_hitstop() -> void:
+	if _hitstop_active:
+		return
+	_hitstop_active = true
+	_hitstop_generation += 1
+	var gen := _hitstop_generation
+	Engine.time_scale = hitstop_time_scale
+	await get_tree().create_timer(hitstop_duration, true, false, true).timeout
+	if gen == _hitstop_generation:
+		Engine.time_scale = 1.0
+		_hitstop_active = false
+
 func reset_for_respawn(spawn_health: int = MAX_HEALTH) -> void:
+	# Ensure time_scale is always restored if a hitstop was in progress when respawning.
+	if _hitstop_active:
+		_hitstop_active = false
+		_hitstop_generation += 1
+		Engine.time_scale = 1.0
 	health = clampi(spawn_health, 1, MAX_HEALTH)
 	is_dead = false
 	is_hurt = false
