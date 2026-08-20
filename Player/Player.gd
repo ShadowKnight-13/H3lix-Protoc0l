@@ -39,11 +39,11 @@ const GAP_SNAP_MIN_DELTA_Y: float = 2.0    # Minimum Y offset required to bother
 const RESPAWN_DAMAGE_GUARD_FRAMES: int = 2
 
 # === HITSTOP / FREEZE-FRAME ===
-@export var hitstop_duration: float = 0.075
+@export var hitstop_duration: float = 0.06
 @export var hitstop_time_scale: float = 0.05
 
 # === ENEMY HIT FREEZE-FRAME ===
-@export var enemy_hit_freeze_duration: float = 0.25
+@export var enemy_hit_freeze_duration: float = 0.06
 @export var enemy_hit_freeze_time_scale: float = 0.0
 
 # === STEP-UP / LEDGE CONSTANTS ===
