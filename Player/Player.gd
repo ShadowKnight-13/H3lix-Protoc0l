@@ -200,6 +200,7 @@ func damage_player():
 		$SFX/hurt.play()
 	else:
 		is_hurt = true
+		_cancel_attack()
 		$AnimationPlayer.play("Damage")
 		_apply_hitstop(hitstop_duration, hitstop_time_scale)
 	emit_signal("health_changed", health)
@@ -287,7 +288,7 @@ func heal(amount: int = 1) -> void:
 func update_animations(x_input: float) -> void:
 	if is_dead:
 		is_hurt = false
-		if $AnimationPlayer.current_animation == "Attack":
+		if $AnimationPlayer.current_animation.begins_with("Attack"):
 			$AnimationPlayer.stop()
 		$AnimationPlayer.play("Idle")
 		return
@@ -579,6 +580,10 @@ func _ready() -> void:
 
 ## === MAIN PHYSICS LOOP ===
 func _physics_process(delta):
+	# Safety net: run every frame, regardless of which branch/early-return below
+	# executes, so the hit-effect sprites can never get stuck visible.
+	_enforce_hit_visual_safety()
+
 	if health <= 0:
 		player_death()
 		return
@@ -790,6 +795,7 @@ func _physics_process(delta):
 		# UPDATED: Use is_on_grippable_wall() instead of is_on_wall()
 		if is_stuck_to_wall and is_on_grippable_wall() and not is_on_floor():
 			# WALL DASH - Dash in the direction the character is currently facing
+			_cancel_attack()
 			is_dashing = true
 			is_air_dive = true
 			air_dash_horizontal_timer = 0.0
@@ -817,6 +823,7 @@ func _physics_process(delta):
 		elif is_on_floor():
 			# Ground dash - requires horizontal movement
 			if abs(x_input) > 0.1:  # Must be moving horizontally
+				_cancel_attack()
 				is_dashing = true
 				is_air_dive = false
 				air_dash_horizontal_timer = 0.0
@@ -840,6 +847,7 @@ func _physics_process(delta):
 				# Only one air dash per airtime.
 				pass
 			else:
+				_cancel_attack()
 				is_dashing = true
 				is_air_dive = true
 				air_dash_horizontal_timer = 0.0  # Reset horizontal phase timer
@@ -1610,14 +1618,48 @@ func _reset_attack_state(reset_animation: bool = false) -> void:
 
 	_attack_direction = "horizontal"
 
-	$Hit.visible = false
-	$Hit2.visible = false
-	$Hit3.visible = false
+	_enforce_hit_visual_safety()
 
 	if reset_animation:
 		$AnimationPlayer.stop()
 		$AnimationPlayer.play("Idle")
 
+## Cancels an in-progress attack immediately without forcing any particular
+## animation to play. Use this whenever another state (dash, getting hurt,
+## ledge grab, etc.) is about to interrupt/override the Attack animation
+## partway through, so the melee hitbox and hit-effect sprites don't linger
+## active past the moment the attack was actually cancelled.
+func _cancel_attack() -> void:
+	if not is_attacking:
+		return
+
+	is_attacking = false
+	_attack_timer = 0.0
+
+	if melee_hitbox:
+		melee_hitbox.monitoring = false
+		melee_hitbox.monitorable = false
+		melee_hitbox.rotation = 0.0
+
+	_attack_direction = "horizontal"
+	_enforce_hit_visual_safety()
+
+## Safety net: the Hit/Hit2/Hit3 attack-effect sprites are only ever supposed
+## to be visible while an attack is actively happening. Their "hide" keyframe
+## normally lives near the end of the Attack/Attack_Up/Attack_Down animation,
+## so if that animation gets interrupted early (dash cancel, taking damage,
+## dying, entering a ledge state, etc.) before reaching that keyframe, the
+## sprite can otherwise get stuck visible forever. Calling this every frame
+## guarantees it never stays visible unless we are actually attacking.
+func _enforce_hit_visual_safety() -> void:
+	if is_attacking:
+		return
+	if $Hit.visible:
+		$Hit.visible = false
+	if $Hit2.visible:
+		$Hit2.visible = false
+	if $Hit3.visible:
+		$Hit3.visible = false
 
 func _update_melee_hitbox_position() -> void:
 	if melee_hitbox:
