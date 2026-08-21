@@ -9,6 +9,13 @@ var current_level_instance: Node = null
 @onready var _wrapper_player: Node2D = $Player
 var _active_level_resolved_path: String = ""
 var _current_level_path: String = ""
+# Guards against handling the same death/level-reset more than once when, e.g.,
+# the player and an enemy kill each other on the same physics frame. Without this,
+# reset_current_level_on_death() can be re-entered (and can also mutate the scene
+# tree while it's still busy processing the collision signal that triggered it),
+# which corrupts the level container and leaves nothing valid for the camera to
+# render (perceived as the screen going black).
+var _death_reset_pending: bool = false
 
 func _ready() -> void:
 	add_to_group("GameMain")
@@ -74,16 +81,30 @@ func load_level(level_ref: String) -> void:
 	set_font_size_recursive(self, UiGlobals.text_size)
 
 func reset_current_level_on_death() -> void:
+	# Player death can be detected while we're still inside a physics collision
+	# signal (e.g. the player and an enemy dealt each other a lethal hit on the
+	# same frame). Rebuilding the level tree synchronously in that situation can
+	# hit Godot's "parent node is busy" tree-mutation error and/or run twice if
+	# both hits report death in the same frame. Guard against re-entrancy and
+	# defer the actual rebuild until it's safe to modify the tree.
+	if _death_reset_pending:
+		return
+	_death_reset_pending = true
+	call_deferred("_do_reset_current_level_on_death")
+
+func _do_reset_current_level_on_death() -> void:
 	# Recreate the current level instance so enemies/hazards reset,
 	# but keep checkpoint data so respawn still uses it.
 	if _current_level_path == "":
 		respawn_player(true)
+		_death_reset_pending = false
 		return
 
 	var packed_scene: PackedScene = load(_current_level_path)
 	if packed_scene == null:
 		push_error("Main.reset_current_level_on_death: Failed to load PackedScene: %s" % _current_level_path)
 		respawn_player(true)
+		_death_reset_pending = false
 		return
 
 	_clear_current_level()
@@ -94,6 +115,7 @@ func reset_current_level_on_death() -> void:
 	_level_container.add_child(current_level_instance)
 
 	respawn_player(true)
+	_death_reset_pending = false
 
 func respawn_player(full_health: bool = false) -> void:
 	var spawn_pos: Vector2 = default_spawn_position
