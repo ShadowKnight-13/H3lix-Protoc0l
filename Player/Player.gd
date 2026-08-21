@@ -88,7 +88,7 @@ var is_stuck_to_wall := false
 ## Grace period after leaving a wall (e.g. by turning away from it) during
 ## which a wall jump is still allowed, mirroring ground coyote time.
 var wall_jump_coyote_timer: float = 0.0
-const WALL_JUMP_COYOTE_TIME: float = 0.25
+const WALL_JUMP_COYOTE_TIME: float = 0.1
 var wall_jump_coyote_normal: Vector2 = Vector2.ZERO
 
 ## === HEALTH & STATE FLAGS ===
