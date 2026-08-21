@@ -37,6 +37,7 @@ const GAP_SNAP_TWEEN_TIME: float = 0.10    # Duration (s) of the vertical snap i
 const GAP_SNAP_COOLDOWN: float = 0.30      # Cooldown after a snap fires to prevent per-frame retriggering
 const GAP_SNAP_MIN_DELTA_Y: float = 2.0    # Minimum Y offset required to bother snapping
 const RESPAWN_DAMAGE_GUARD_FRAMES: int = 2
+const POST_HIT_INVINCIBILITY_DURATION: float = 0.5  # Seconds of invincibility after taking damage
 
 # === HITSTOP / FREEZE-FRAME ===
 @export var hitstop_duration: float = 0.06
@@ -203,6 +204,8 @@ func damage_player():
 		_cancel_attack()
 		$AnimationPlayer.play("Damage")
 		_apply_hitstop(hitstop_duration, hitstop_time_scale)
+		var invincibility_frames := int(round(POST_HIT_INVINCIBILITY_DURATION * Engine.physics_ticks_per_second))
+		_ignore_damage_until_frame = Engine.get_physics_frames() + invincibility_frames
 	emit_signal("health_changed", health)
 
 func _apply_hitstop(duration: float, time_scale: float) -> void:
