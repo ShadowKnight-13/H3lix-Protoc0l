@@ -787,7 +787,7 @@ func _physics_process(delta):
 		# Check if we're on a GRIPPABLE wall FIRST (highest priority)
 		# UPDATED: Use is_on_grippable_wall() instead of is_on_wall()
 		if is_stuck_to_wall and is_on_grippable_wall() and not is_on_floor():
-			# WALL DASH - Automatically dash away from wall
+			# WALL DASH - Dash in the direction the character is currently facing
 			is_dashing = true
 			is_air_dive = true
 			air_dash_horizontal_timer = 0.0
@@ -795,15 +795,18 @@ func _physics_process(delta):
 			wall_stick_time = 0.0
 			is_stuck_to_wall = false  # Release from wall
 			
-			# Dash AWAY from the wall automatically
+			# Dash in the direction the character is looking. Fall back to
+			# dashing away from the wall if facing direction is somehow unset.
 			var wall_normal = get_wall_normal()
-			dash_direction = sign(wall_normal.x)
+			dash_direction = sign(facing_direction)
+			if dash_direction == 0:
+				dash_direction = sign(wall_normal.x)
 			
 			# Reduce collision height for dash
 			$CollisionShape2D.scale.y = 0.5
 			$CollisionShape2D.position.y = $CollisionShape2D.shape.size.y * 0.25
 			
-			# Set velocities for horizontal dash away from wall
+			# Set velocities for horizontal dash in the facing direction
 			velocity.x = dash_direction * DASH_SPEED
 			velocity.y = 0  # Start horizontal
 			air_dash_used = true
