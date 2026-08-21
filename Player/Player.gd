@@ -232,6 +232,12 @@ func reset_for_respawn(spawn_health: int = MAX_HEALTH) -> void:
 	_ignore_damage_until_frame = Engine.get_physics_frames() + RESPAWN_DAMAGE_GUARD_FRAMES
 	emit_signal("health_changed", health)
 
+	# Safety: if the player died mid-Damage animation, the sprite's modulate
+	# can still be left tinted black. Force it back to normal on respawn.
+	if $AnimationPlayer.is_playing():
+		$AnimationPlayer.stop()
+	$Sprite2D.modulate = Color(1, 1, 1, 1)
+
 	# Reset movement/combat state so respawns don't inherit dash/crouch collisions.
 	velocity = Vector2.ZERO
 	set_physics_process(true)
