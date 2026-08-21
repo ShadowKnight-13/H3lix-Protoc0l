@@ -84,6 +84,13 @@ const WALL_JUMP_LOCK_TIME: float = 0.15
 var quick_drop_lock: float = 0.0
 var is_stuck_to_wall := false
 
+## === WALL JUMP COYOTE TIME ===
+## Grace period after leaving a wall (e.g. by turning away from it) during
+## which a wall jump is still allowed, mirroring ground coyote time.
+var wall_jump_coyote_timer: float = 0.0
+const WALL_JUMP_COYOTE_TIME: float = 0.25
+var wall_jump_coyote_normal: Vector2 = Vector2.ZERO
+
 ## === HEALTH & STATE FLAGS ===
 var health = MAX_HEALTH
 var is_dead := false
@@ -231,6 +238,8 @@ func reset_for_respawn(spawn_health: int = MAX_HEALTH) -> void:
 	quick_drop_lock = 0.0
 	is_stuck_to_wall = false
 	is_wall_jumping = false
+	wall_jump_coyote_timer = 0.0
+	wall_jump_coyote_normal = Vector2.ZERO
 	is_ledge_hanging = false
 	is_ledge_climbing = false
 	is_ledge_hang_transitioning = false
@@ -912,6 +921,33 @@ func _physics_process(delta):
 				skip_gravity_this_frame = true  # Don't apply gravity on jump frame
 				wall_stick_time = 0.0
 				is_stuck_to_wall = false  # Release from wall
+				wall_jump_coyote_timer = 0.0  # Consume coyote time so it can't be used twice
+		# Wall jump coyote time: allow the jump for a short grace period after
+		# leaving a wall we could have jumped from (e.g. turning away from it).
+		elif jump_pressed and wall_jump_coyote_timer > 0.0 and not is_on_floor():
+			velocity.y = JUMP_HEIGHT
+			velocity.x = wall_jump_coyote_normal.x * WALL_JUMP_PUSH_FORCE
+			wall_jump_lock = WALL_JUMP_LOCK_TIME
+			is_wall_jumping = true
+			is_jumping = true
+			is_dash_jumping = false  # Wall jumps are NOT dash jumps
+			# Refresh one air dash after a successful wall jump.
+			air_dash_used = false
+			skip_gravity_this_frame = true  # Don't apply gravity on jump frame
+			wall_stick_time = 0.0
+			is_stuck_to_wall = false  # Release from wall
+			wall_jump_coyote_timer = 0.0  # Consume coyote time so it can't be used twice
+		
+		# === WALL JUMP COYOTE TIME BOOKKEEPING ===
+		# Refresh the grace window while we're actually eligible to wall jump,
+		# and let it tick down once we leave that state (e.g. turn away from wall).
+		if is_wall_sliding:
+			wall_jump_coyote_timer = WALL_JUMP_COYOTE_TIME
+			wall_jump_coyote_normal = wall_normal
+		elif is_on_floor():
+			wall_jump_coyote_timer = 0.0
+		else:
+			wall_jump_coyote_timer = max(wall_jump_coyote_timer - delta, 0.0)
 		
 		# Check if we should STOP sticking to wall (AFTER checking actions)
 		# This way dash/jump take priority over manual release
