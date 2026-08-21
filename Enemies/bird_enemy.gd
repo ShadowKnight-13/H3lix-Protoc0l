@@ -10,6 +10,7 @@ extends BaseEnemy
 @export var stuck_time_threshold: float = 0.4
 @export var stuck_distance_threshold: float = 4.0
 @export var evasion_speed: float = 90.0
+@export var max_return_evasions: int = 5
 
 enum State { PATROL, DIVE, RETURN }
 
@@ -25,6 +26,7 @@ var is_diving: bool = false
 var _stuck_timer: float = 0.0
 var _last_position: Vector2 = Vector2.ZERO
 var _evasion_dir: int = 1
+var _return_evasion_count: int = 0
 
 @onready var player: Node2D = null
 
@@ -56,17 +58,6 @@ func _physics_process(delta: float) -> void:
 		$Sprite2D.flip_h = velocity.x > 0
 
 func _handle_obstructions(delta: float) -> void:
-	# If something solid is directly above us while we're trying to climb
-	# back up to our patrol height, don't keep pushing into it forever.
-	# Treat the current height as the new patrol height instead.
-	if state == State.RETURN and is_on_ceiling():
-		_start_y = global_position.y
-		velocity = Vector2.ZERO
-		state = State.PATROL
-		_stuck_timer = 0.0
-		_last_position = global_position
-		return
-
 	# Generic stuck detection: if we're barely moving despite trying to,
 	# nudge sideways to slide around whatever is blocking us so we don't
 	# get permanently wedged against a platform, wall, etc.
@@ -94,15 +85,22 @@ func _evade_obstruction() -> void:
 		return
 
 	if state == State.RETURN:
-		# Slide sideways away from whatever is blocking the climb, then
-		# resume patrol from the current (unblocked) height.
+		# Slide sideways away from whatever is blocking the climb, but keep
+		# trying to reach the original patrol height afterwards instead of
+		# giving up on it after a single obstruction.
 		if get_slide_collision_count() > 0:
 			var normal := get_last_slide_collision().get_normal()
 			_evasion_dir = -1 if normal.x >= 0.0 else 1
 		global_position.x += _evasion_dir * evasion_speed * get_physics_process_delta_time()
-		_start_y = global_position.y
 		velocity = Vector2.ZERO
-		state = State.PATROL
+		_return_evasion_count += 1
+
+		# Only give up on reaching the original patrol height after
+		# repeatedly failing to climb around obstructions.
+		if _return_evasion_count >= max_return_evasions:
+			_start_y = global_position.y
+			state = State.PATROL
+			_return_evasion_count = 0
 
 func _update_cooldown(delta: float) -> void:
 	if _dive_cooldown_timer > 0.0:
@@ -158,6 +156,7 @@ func _enter_return_state() -> void:
 	state = State.RETURN
 	_dive_cooldown_timer = dive_cooldown
 	is_diving = false
+	_return_evasion_count = 0
 
 func _return_update(_delta: float) -> void:
 	# Fly back up toward the original patrol height
@@ -168,6 +167,7 @@ func _return_update(_delta: float) -> void:
 		global_position = target
 		velocity = Vector2.ZERO
 		state = State.PATROL
+		_return_evasion_count = 0
 	else:
 		velocity = to_target.normalized() * patrol_speed
 
