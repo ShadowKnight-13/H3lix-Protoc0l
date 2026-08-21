@@ -1,5 +1,7 @@
 [gd_scene format=4 uid="uid://1rop0p3awjri"]
 
+[ext_resource type="Script" path="res://UI/scene_fade.gd" id="1_scfade"]
+
 [sub_resource type="Animation" id="Animation_4cwpn"]
 length = 0.001
 tracks/0/type = "value"
@@ -57,6 +59,7 @@ data = PackedByteArray("cW9hZgAAPqEBAKxEFAAIGAAAAAAAAAAAAAAAAOAAQABA0cQCU0SEwBec
 format = 3
 
 [node name="SceneFade" type="CanvasLayer" unique_id=1828207428]
+script = ExtResource("1_scfade")
 
 [node name="Black" type="ColorRect" parent="." unique_id=1460901754]
 custom_minimum_size = Vector2(2000, 2000)
