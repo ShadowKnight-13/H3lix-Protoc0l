@@ -569,6 +569,8 @@ func can_wall_slide_jump() -> bool:
 
 func _ready() -> void:
 	$Hit.visible = false
+	$Hit2.visible = false
+	$Hit3.visible = false
 	if not $AnimationPlayer.animation_finished.is_connected(_on_animation_player_animation_finished):
 		$AnimationPlayer.animation_finished.connect(_on_animation_player_animation_finished)
 	# Support enemies that use Area2D hurtboxes (e.g. DogEnemy Hurtbox).
@@ -1609,6 +1611,8 @@ func _reset_attack_state(reset_animation: bool = false) -> void:
 	_attack_direction = "horizontal"
 
 	$Hit.visible = false
+	$Hit2.visible = false
+	$Hit3.visible = false
 
 	if reset_animation:
 		$AnimationPlayer.stop()
