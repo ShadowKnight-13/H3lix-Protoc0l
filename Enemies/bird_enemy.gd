@@ -7,6 +7,9 @@ extends BaseEnemy
 @export var max_dive_depth: float = 300.0
 @export var dive_safety_margin: float = 32.0
 @export var sight_range: float = 220.0
+@export var stuck_time_threshold: float = 0.4
+@export var stuck_distance_threshold: float = 4.0
+@export var evasion_speed: float = 90.0
 
 enum State { PATROL, DIVE, RETURN }
 
@@ -19,6 +22,10 @@ var _dive_direction: Vector2 = Vector2.DOWN
 var _dive_cooldown_timer: float = 0.0
 var is_diving: bool = false
 
+var _stuck_timer: float = 0.0
+var _last_position: Vector2 = Vector2.ZERO
+var _evasion_dir: int = 1
+
 @onready var player: Node2D = null
 
 func _ready() -> void:
@@ -26,6 +33,7 @@ func _ready() -> void:
 	_start_y = global_position.y
 	_left_limit = global_position.x - patrol_range * 0.5
 	_right_limit = global_position.x + patrol_range * 0.5
+	_last_position = global_position
 
 	player = get_tree().get_first_node_in_group("player")
 
@@ -42,8 +50,59 @@ func _physics_process(delta: float) -> void:
 			_return_update(delta)
 
 	move_and_slide()
+	_handle_obstructions(delta)
+
 	if velocity.x != 0:
 		$Sprite2D.flip_h = velocity.x > 0
+
+func _handle_obstructions(delta: float) -> void:
+	# If something solid is directly above us while we're trying to climb
+	# back up to our patrol height, don't keep pushing into it forever.
+	# Treat the current height as the new patrol height instead.
+	if state == State.RETURN and is_on_ceiling():
+		_start_y = global_position.y
+		velocity = Vector2.ZERO
+		state = State.PATROL
+		_stuck_timer = 0.0
+		_last_position = global_position
+		return
+
+	# Generic stuck detection: if we're barely moving despite trying to,
+	# nudge sideways to slide around whatever is blocking us so we don't
+	# get permanently wedged against a platform, wall, etc.
+	if state == State.PATROL:
+		_stuck_timer = 0.0
+		_last_position = global_position
+		return
+
+	if global_position.distance_to(_last_position) < stuck_distance_threshold:
+		_stuck_timer += delta
+	else:
+		_stuck_timer = 0.0
+
+	_last_position = global_position
+
+	if _stuck_timer >= stuck_time_threshold:
+		_evade_obstruction()
+
+func _evade_obstruction() -> void:
+	_stuck_timer = 0.0
+
+	if state == State.DIVE:
+		# Bail out of the dive rather than grinding against an obstacle.
+		_enter_return_state()
+		return
+
+	if state == State.RETURN:
+		# Slide sideways away from whatever is blocking the climb, then
+		# resume patrol from the current (unblocked) height.
+		if get_slide_collision_count() > 0:
+			var normal := get_last_slide_collision().get_normal()
+			_evasion_dir = -1 if normal.x >= 0.0 else 1
+		global_position.x += _evasion_dir * evasion_speed * get_physics_process_delta_time()
+		_start_y = global_position.y
+		velocity = Vector2.ZERO
+		state = State.PATROL
 
 func _update_cooldown(delta: float) -> void:
 	if _dive_cooldown_timer > 0.0:
