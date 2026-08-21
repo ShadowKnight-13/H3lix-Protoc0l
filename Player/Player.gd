@@ -43,7 +43,7 @@ const RESPAWN_DAMAGE_GUARD_FRAMES: int = 2
 @export var hitstop_time_scale: float = 0.05
 
 # === ENEMY HIT FREEZE-FRAME ===
-@export var enemy_hit_freeze_duration: float = 0.06
+@export var enemy_hit_freeze_duration: float = 0.05
 @export var enemy_hit_freeze_time_scale: float = 0.0
 
 # === STEP-UP / LEDGE CONSTANTS ===
