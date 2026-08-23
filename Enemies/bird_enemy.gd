@@ -6,7 +6,7 @@ extends BaseEnemy
 @export var dive_cooldown: float = 2.0
 @export var max_dive_depth: float = 300.0
 @export var dive_safety_margin: float = 32.0
-@export var sight_range: float = 220.0
+@export var sight_range: float = 440.0
 @export var stuck_time_threshold: float = 0.4
 @export var stuck_distance_threshold: float = 4.0
 @export var evasion_speed: float = 90.0
@@ -101,7 +101,7 @@ func _evade_obstruction() -> void:
 	if state == State.RETURN and _in_temp_patrol:
 		# Just bounce off whatever is blocking the temporary patrol lane,
 		# same as bouncing off a normal patrol limit.
-		_temp_patrol_dir *= -1
+		_temp_patrol_dir *= 1.5
 		return
 
 	if state == State.RETURN:
