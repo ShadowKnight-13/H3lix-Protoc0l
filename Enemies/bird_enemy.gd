@@ -11,6 +11,10 @@ extends BaseEnemy
 @export var stuck_distance_threshold: float = 4.0
 @export var evasion_speed: float = 90.0
 @export var max_return_evasions: int = 5
+@export var obstacle_check_distance: float = 40.0
+@export var obstacle_recheck_interval: float = 0.5
+@export var temp_patrol_range_increment: float = 60.0
+@export var max_temp_patrol_expansions: int = 5
 
 enum State { PATROL, DIVE, RETURN }
 
@@ -27,6 +31,16 @@ var _stuck_timer: float = 0.0
 var _last_position: Vector2 = Vector2.ZERO
 var _evasion_dir: int = 1
 var _return_evasion_count: int = 0
+
+# Temporary patrol state used while climbing back to the original patrol
+# height is blocked by an obstacle directly overhead.
+var _in_temp_patrol: bool = false
+var _temp_patrol_dir: int = 1
+var _temp_left_limit: float = 0.0
+var _temp_right_limit: float = 0.0
+var _temp_turns_since_widen: int = 0
+var _temp_expansions: int = 0
+var _obstacle_recheck_timer: float = 0.0
 
 @onready var player: Node2D = null
 
@@ -84,6 +98,12 @@ func _evade_obstruction() -> void:
 		_enter_return_state()
 		return
 
+	if state == State.RETURN and _in_temp_patrol:
+		# Just bounce off whatever is blocking the temporary patrol lane,
+		# same as bouncing off a normal patrol limit.
+		_temp_patrol_dir *= -1
+		return
+
 	if state == State.RETURN:
 		# Slide sideways away from whatever is blocking the climb, but keep
 		# trying to reach the original patrol height afterwards instead of
@@ -137,6 +157,11 @@ func _dive_update(_delta: float) -> void:
 	# Mild steering toward the player during dive (optional)
 	if player != null:
 		var to_player := player.global_position - global_position
+		if to_player.length() > sight_range:
+			# The player has left our detection zone; abandon the dive and
+			# head back toward the original patrol position and height.
+			_enter_return_state()
+			return
 		if to_player.length() > 0.0:
 			var desired_dir := to_player.normalized()
 			_dive_direction = _dive_direction.lerp(desired_dir, 0.05).normalized()
@@ -157,8 +182,20 @@ func _enter_return_state() -> void:
 	_dive_cooldown_timer = dive_cooldown
 	is_diving = false
 	_return_evasion_count = 0
+	_in_temp_patrol = false
+	_temp_expansions = 0
 
 func _return_update(_delta: float) -> void:
+	if _in_temp_patrol:
+		_temp_patrol_update(_delta)
+		return
+
+	# Before climbing further, make sure there isn't an obstacle directly
+	# overhead blocking the way back to the original patrol height.
+	if global_position.y > _start_y and not _is_path_clear_above(obstacle_check_distance):
+		_start_temp_patrol()
+		return
+
 	# Fly back up toward the original patrol height
 	var target := Vector2(global_position.x, _start_y)
 	var to_target := target - global_position
@@ -170,6 +207,65 @@ func _return_update(_delta: float) -> void:
 		_return_evasion_count = 0
 	else:
 		velocity = to_target.normalized() * patrol_speed
+
+func _is_path_clear_above(check_distance: float) -> bool:
+	var space_state := get_world_2d().direct_space_state
+	var from := global_position
+	var to := global_position + Vector2(0, -check_distance)
+	var query := PhysicsRayQueryParameters2D.create(from, to)
+	query.collision_mask = collision_mask
+	query.exclude = [self]
+	var result := space_state.intersect_ray(query)
+	return result.is_empty()
+
+func _start_temp_patrol() -> void:
+	# Establish a temporary patrol lane at the current height so the bird
+	# keeps moving instead of hovering against the obstacle, while it waits
+	# for the way above to clear.
+	_in_temp_patrol = true
+	_temp_expansions = 0
+	_temp_turns_since_widen = 0
+	_obstacle_recheck_timer = obstacle_recheck_interval
+	_temp_patrol_dir = _dir if _dir != 0 else 1
+	_temp_left_limit = global_position.x - patrol_range * 0.5
+	_temp_right_limit = global_position.x + patrol_range * 0.5
+
+func _temp_patrol_update(delta: float) -> void:
+	velocity.x = _temp_patrol_dir * patrol_speed
+	velocity.y = 0.0
+
+	if global_position.x <= _temp_left_limit:
+		global_position.x = _temp_left_limit
+		_temp_patrol_dir = 1
+		_temp_turns_since_widen += 1
+	elif global_position.x >= _temp_right_limit:
+		global_position.x = _temp_right_limit
+		_temp_patrol_dir = -1
+		_temp_turns_since_widen += 1
+
+	_obstacle_recheck_timer -= delta
+	if _obstacle_recheck_timer <= 0.0:
+		_obstacle_recheck_timer = obstacle_recheck_interval
+		if _is_path_clear_above(obstacle_check_distance):
+			# Obstacle is gone (or we found a gap); resume climbing toward
+			# the original patrol position and height.
+			_in_temp_patrol = false
+			return
+
+	# We've swept the whole temporary patrol lane without finding a clear
+	# spot overhead. Widen the lane and keep looking, up to a limit.
+	if _temp_turns_since_widen >= 2:
+		_temp_turns_since_widen = 0
+		if _temp_expansions < max_temp_patrol_expansions:
+			_temp_expansions += 1
+			_temp_left_limit -= temp_patrol_range_increment * 0.5
+			_temp_right_limit += temp_patrol_range_increment * 0.5
+		else:
+			# Give up widening further and settle into patrolling here
+			# rather than getting stuck in an endless search.
+			_start_y = global_position.y
+			_in_temp_patrol = false
+			state = State.PATROL
 
 func _on_hurt_box_body_entered(body: Node2D) -> void:
 	if not body.is_in_group("player"):
