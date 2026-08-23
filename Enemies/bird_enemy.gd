@@ -116,9 +116,10 @@ func _evade_obstruction() -> void:
 		_return_evasion_count += 1
 
 		# Only give up on reaching the original patrol height after
-		# repeatedly failing to climb around obstructions.
+		# repeatedly failing to climb around obstructions. We still stop
+		# fighting the obstruction for now, but keep the original patrol
+		# height so a future return attempt can try again.
 		if _return_evasion_count >= max_return_evasions:
-			_start_y = global_position.y
 			state = State.PATROL
 			_return_evasion_count = 0
 
@@ -184,17 +185,23 @@ func _enter_return_state() -> void:
 	_return_evasion_count = 0
 	_in_temp_patrol = false
 	_temp_expansions = 0
+	_obstacle_recheck_timer = 0.0
 
-func _return_update(_delta: float) -> void:
+func _return_update(delta: float) -> void:
 	if _in_temp_patrol:
-		_temp_patrol_update(_delta)
+		_temp_patrol_update(delta)
 		return
 
 	# Before climbing further, make sure there isn't an obstacle directly
-	# overhead blocking the way back to the original patrol height.
-	if global_position.y > _start_y and not _is_path_clear_above(obstacle_check_distance):
-		_start_temp_patrol()
-		return
+	# overhead blocking the way back to the original patrol height. This
+	# raycast is throttled rather than run every physics frame.
+	if global_position.y > _start_y:
+		_obstacle_recheck_timer -= delta
+		if _obstacle_recheck_timer <= 0.0:
+			_obstacle_recheck_timer = obstacle_recheck_interval
+			if not _is_path_clear_above(obstacle_check_distance):
+				_start_temp_patrol()
+				return
 
 	# Fly back up toward the original patrol height
 	var target := Vector2(global_position.x, _start_y)
@@ -235,11 +242,9 @@ func _temp_patrol_update(delta: float) -> void:
 	velocity.y = 0.0
 
 	if global_position.x <= _temp_left_limit:
-		global_position.x = _temp_left_limit
 		_temp_patrol_dir = 1
 		_temp_turns_since_widen += 1
 	elif global_position.x >= _temp_right_limit:
-		global_position.x = _temp_right_limit
 		_temp_patrol_dir = -1
 		_temp_turns_since_widen += 1
 
@@ -261,9 +266,10 @@ func _temp_patrol_update(delta: float) -> void:
 			_temp_left_limit -= temp_patrol_range_increment * 0.5
 			_temp_right_limit += temp_patrol_range_increment * 0.5
 		else:
-			# Give up widening further and settle into patrolling here
-			# rather than getting stuck in an endless search.
-			_start_y = global_position.y
+			# Give up widening further for now and settle into patrolling
+			# here rather than getting stuck in an endless search. The
+			# original patrol height is preserved so a future dive/return
+			# cycle will try to climb back to it again.
 			_in_temp_patrol = false
 			state = State.PATROL
 
