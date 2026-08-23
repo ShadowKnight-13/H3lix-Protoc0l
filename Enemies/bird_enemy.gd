@@ -238,6 +238,15 @@ func _start_temp_patrol() -> void:
 	_temp_right_limit = global_position.x + patrol_range * 0.5
 
 func _temp_patrol_update(delta: float) -> void:
+	# Even while sidetracked into a temporary patrol, the bird should still
+	# behave normally if the player re-enters its detection zone: abandon
+	# the temporary patrol and dive/attack just like it would from the
+	# regular patrol state.
+	_try_start_dive()
+	if state == State.DIVE:
+		_in_temp_patrol = false
+		return
+
 	velocity.x = _temp_patrol_dir * patrol_speed
 	velocity.y = 0.0
 
